@@ -29,9 +29,9 @@ BEGIN
 	--AltAddr
 	SELECT 'AltAddr Start: '+ CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121)
 
- 	INSERT INTO YAF..Load_AltAddr
+	INSERT INTO YAF..Load_AltAddr
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM AltAddr WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM AltAddr')
 
 	SELECT 'AltAddr Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 	--SELECT CHAR(13)+CHAR(10)
@@ -42,7 +42,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Attributes
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Attributes WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Attributes')
 
 	SELECT 'Attributes Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -51,7 +51,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Books
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Books WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Books')
 
 	SELECT 'Books Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -60,7 +60,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Donation
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Donation WHERE gift_date >= ''2020-01-01'' LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Donation')
 
 	SELECT 'Donation Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -69,7 +69,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Donor
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Donor WHERE stamp <> add_date and stamp >= ''2020-01-01'' LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Donor')
 
 	SELECT 'Donor Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -78,7 +78,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Events
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Events WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Events')
 
 	SELECT 'Events Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -87,7 +87,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Lookups
 	SELECT *
-	FROM openquery(YAF, 'SELECT * FROM Lookups LIMIT 10')
+	FROM openquery(YAF, 'SELECT * FROM Lookups')
 
 	SELECT 'Lookups Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -96,7 +96,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Mail
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Mail WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Mail')
 
 	SELECT 'Mail Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -105,7 +105,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Notes
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Notes WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Notes')
 
 	SELECT 'Notes Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -114,7 +114,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Personal
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Personal WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Personal')
 
 	SELECT 'Personal Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -123,7 +123,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Phones
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Phones WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Phones')
 
 	SELECT 'Phones Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -132,7 +132,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Premiums
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Premiums WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Premiums')
 
 	SELECT 'Premiums Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 
@@ -141,7 +141,7 @@ BEGIN
 
 	INSERT INTO YAF..Load_Recognition
 	SELECT *
-	FROM OPENQUERY(YAF, 'SELECT * FROM Recognition WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
+	FROM OPENQUERY(YAF, 'SELECT * FROM Recognition')
 
 	SELECT 'Recognition Finish: ' + CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121) + CHAR(13)+CHAR(10)
 

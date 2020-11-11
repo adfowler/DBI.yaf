@@ -29,7 +29,7 @@ BEGIN
 	--AltAddr
 	SELECT 'AltAddr Start: '+ CONVERT(VARCHAR(25), CURRENT_TIMESTAMP, 121)
 
-	INSERT INTO YAF..Load_AltAddr
+ 	INSERT INTO YAF..Load_AltAddr
 	SELECT *
 	FROM OPENQUERY(YAF, 'SELECT * FROM AltAddr WHERE did in (select did from donation where gift_date >= ''2020-01-01'') LIMIT 10')
 

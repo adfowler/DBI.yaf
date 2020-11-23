@@ -2,7 +2,7 @@
 /* This script rolls data to the SF Account level. It joins Donors to AltAddr, then rolls up Books, Events, Mail, Pekrsonal, Premiums,    */
 /* and Recognition into delimited string fields. Only default addresses are included.                                                     */
 /******************************************************************************************************************************************/
---
+
 USE YAF
 
 DROP TABLE IF EXISTS SF_Account

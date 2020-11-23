@@ -5,6 +5,8 @@
 
 USE YAF
 
+DROP TABLE IF EXISTS SF_Account
+
 ;WITH bk1 AS (
   SELECT DISTINCT did, uniquekey
   FROM Load_Books
@@ -15,14 +17,7 @@ booklist AS (
   GROUP BY did
 ),
 ev1 AS (
-  SELECT DISTINCT
-    did,
-    CASE
-      WHEN charindex(uniquekey, description) > 0    THEN description  -- uniquekey is included in the description
-      WHEN description = ' ' OR description IS NULL THEN uniquekey
-      WHEN uniquekey   = ' ' OR uniquekey   IS NULL THEN description
-      ELSE uniquekey + ' (' + description + ')'                       -- enclose description in parenthesis
-    END 'SFEvent'
+  SELECT DISTINCT did, uniquekey 'SFEvent'
   FROM Load_Events
 ),
 eventlist AS (
@@ -31,14 +26,7 @@ eventlist AS (
   GROUP BY did
 ),
 ml1 AS (
-  SELECT DISTINCT
-    did,
-    CASE
-      WHEN charindex(uniquekey, description) > 0    THEN description  -- uniquekey is included in the description
-      WHEN description = ' ' OR description IS NULL THEN uniquekey
-      WHEN uniquekey   = ' ' OR uniquekey   IS NULL THEN description
-      ELSE uniquekey + ' (' + description + ')'                       -- enclose description in parenthesis
-    END 'SFMail'
+  SELECT DISTINCT did, uniquekey 'SFMail'
   FROM Load_Mail
 ),
 maillist AS (
@@ -47,14 +35,7 @@ maillist AS (
   GROUP BY did
 ),
 pl1 AS (
-  SELECT DISTINCT
-    did,
-    CASE
-      WHEN charindex(uniquekey, description) > 0    THEN description  -- uniquekey is included in the description
-      WHEN description = ' ' OR description IS NULL THEN uniquekey
-      WHEN uniquekey   = ' ' OR uniquekey   IS NULL THEN description
-      ELSE uniquekey + ' (' + description + ')'                       -- enclose description in parenthesis
-    END 'SFPersonal'
+  SELECT DISTINCT did, uniquekey 'SFPersonal'
   FROM Load_Personal
 ),
 personallist AS (
@@ -63,14 +44,7 @@ personallist AS (
   GROUP BY did
 ),
 pr1 AS (
-  SELECT DISTINCT
-    did,
-    CASE
-      WHEN charindex(uniquekey, description) > 0    THEN description  -- uniquekey is included in the description
-      WHEN description = ' ' OR description IS NULL THEN uniquekey
-      WHEN uniquekey   = ' ' OR uniquekey   IS NULL THEN description
-      ELSE uniquekey + ' (' + description + ')'                       -- enclose description in parenthesis
-    END 'SFPremium'
+  SELECT DISTINCT did, uniquekey 'SFPremium'
   FROM Load_Premiums
 ),
 premiumlist AS (
@@ -79,14 +53,7 @@ premiumlist AS (
   GROUP BY did
 ),
 rc1 AS (
-  SELECT DISTINCT
-    did,
-    CASE
-      WHEN charindex(uniquekey, description) > 0    THEN description  -- uniquekey is included in the description
-      WHEN description = ' ' OR description IS NULL THEN uniquekey
-      WHEN uniquekey   = ' ' OR uniquekey   IS NULL THEN description
-      ELSE uniquekey + ' (' + description + ')'                       -- enclose description in parenthesis
-    END 'SFRecognition'
+  SELECT DISTINCT did, uniquekey 'SFRecognition'
   FROM Load_Recognition
 ),
 recognitionlist AS (
@@ -117,8 +84,8 @@ SELECT
   a.movemgr2,
   a.akey,
   a.addr_type,
-  a.addr2,
-  a.street,
+  --a.addr2,
+  a.street + ' ' + a.addr2 'BillingStreet',
   a.city,
   a.state,
   a.zip,

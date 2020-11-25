@@ -89,11 +89,12 @@ recognitionlist AS (
   FROM rc1
   GROUP BY did
 ),
-MostRecentGift as (
-		SELECT did, MAX(gift_date) 'RecentGift'
+Gifts as (
+		SELECT did, MIN(gift_date) 'FirstGift', MAX(gift_date) 'LastGift'
 		FROM Load_Donation
 		GROUP BY did
-		)
+)
+
 SELECT DISTINCT
   a.did,
   a.title,
@@ -144,8 +145,11 @@ SELECT DISTINCT
   a.country,
   a.vanity,
   CASE WHEN a.frozen = 1 THEN 'Frozen'
-	   WHEN h.RecentGift >= DATEADD(dd, -365, GETDATE()) THEN 'Active'
-	   WHEN h.RecentGift < DATEADD(dd, -365, GETDATE()) THEN 'Inactive'
+	   WHEN a.Deleted = 1 THEN 'Deleted'
+	   WHEN h.FirstGift >= DATEADD(month, -12, GETDATE()) THEN 'New'
+	   WHEN h.LastGift >= DATEADD(month, -24, GETDATE()) THEN 'Active'
+	   WHEN DATEDIFF(month, LastGift, GETDATE()) BETWEEN 25 AND 36 THEN 'Lapsed'
+	   WHEN h.LastGift <= DATEADD(month, -37, GETDATE()) THEN 'Inactive'
 	   ELSE 'Prospect'
   END 'Status',
   b.BookList,
@@ -154,6 +158,7 @@ SELECT DISTINCT
   e.PersonalList,
   f.PremiumList,
   g.RecognitionList,
+  /*SF Preference tab*/
   CAST(NULL AS VARCHAR(25)) 'SolicitationSchedule',
   CAST(NULL AS VARCHAR(10)) 'CommunicationFrequency',
   CASE WHEN d.MailList LIKE '%MAILSTOP%' THEN 1 ELSE 0 END 'StopMail',
@@ -171,7 +176,9 @@ SELECT DISTINCT
   CASE WHEN d.MailList LIKE '%NO MASS EMAIL%' THEN 1 ELSE 0 END 'NoMassEmails',
   CAST(NULL AS VARCHAR(35)) 'RanchPreference',
   CAST(NULL AS VARCHAR(45)) 'InvitationPreference',
-  CAST(NULL AS VARCHAR(35)) 'CruisePreference'
+  CAST(NULL AS VARCHAR(35)) 'CruisePreference',
+  FirstGift,
+  LastGift
 INTO SF_Account
 FROM V_DonorAddress a
 LEFT OUTER JOIN booklist b
@@ -186,7 +193,7 @@ LEFT OUTER JOIN premiumlist f
   ON a.did = f.did
 LEFT OUTER JOIN recognitionlist g
   ON a.did = g.did
-LEFT OUTER JOIN MostRecentGift h
+LEFT OUTER JOIN Gifts h
   ON a.did = h.did
 WHERE a.defaultaddr = 1
 
@@ -234,7 +241,7 @@ UPDATE a
 SET a.ThankYouLetterPreference = CASE m.uniquekey
 									WHEN 'E-MAIL THANK YOU' THEN 'Email Only'
 									WHEN 'NO THANK YOU LTR' THEN 'No Thank You Letters'
-									WHEN 'END OF YEAR' THEN 'Send EOY Statement Only'
+									--WHEN 'END OF YEAR' THEN 'Send EOY Statement Only'
 								 END
 FROM SF_Account a INNER JOIN Load_Mail m
   on a.did = m.did

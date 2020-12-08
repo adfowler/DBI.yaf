@@ -90,12 +90,26 @@ recognitionlist AS (
   GROUP BY did
 ),
 Gifts as (
-		SELECT did, MIN(gift_date) 'FirstGift', MAX(gift_date) 'LastGift'
+		SELECT did, 
+		SUM(CASE WHEN YEAR(gift_date) = 2018 THEN amount ELSE 0 END) 'Gifts2018', 
+		SUM(CASE WHEN YEAR(gift_date) = 2017 THEN amount ELSE 0 END) 'Gifts2017', 
+		SUM(CASE WHEN YEAR(gift_date) = 2016 THEN amount ELSE 0 END) 'Gifts2016', 
+		SUM(CASE WHEN YEAR(gift_date) = 2015 THEN amount ELSE 0 END) 'Gifts2015', 
+		SUM(CASE WHEN YEAR(gift_date) = 2014 THEN amount ELSE 0 END) 'Gifts2014', 
+		SUM(CASE WHEN YEAR(gift_date) = 2013 THEN amount ELSE 0 END) 'Gifts2013', 
+		SUM(CASE WHEN YEAR(gift_date) = 2012 THEN amount ELSE 0 END) 'Gifts2012', 
+		MIN(gift_date) 'FirstGift', MAX(gift_date) 'LastGift'
 		FROM Load_Donation
 		GROUP BY did
+),
+PhoneBank as (
+ SELECT did, STRING_AGG(phone + ' (' + ttype + ')', ';')  WITHIN GROUP (ORDER BY phone ASC) 'PhoneList'
+ FROM load_phones
+ WHERE phone <> ''
+ GROUP BY did
 )
 
-SELECT DISTINCT
+SELECT DISTINCT TOP 5000
   a.did,
   a.title,
   a.name,
@@ -177,8 +191,21 @@ SELECT DISTINCT
   CAST(NULL AS VARCHAR(35)) 'RanchPreference',
   CAST(NULL AS VARCHAR(45)) 'InvitationPreference',
   CAST(NULL AS VARCHAR(35)) 'CruisePreference',
-  FirstGift,
-  LastGift
+ -- FirstGift,
+  --LastGift,
+
+  CAST('' AS VARCHAR(100)) 'LegacySocietyStatus',
+  /*Gift totals by year*/
+  h.Gifts2012,
+  h.Gifts2013,
+  h.Gifts2014,
+  h.Gifts2015,
+  h.Gifts2016,
+  h.Gifts2017,
+  h.Gifts2018,
+
+  j.PhoneList
+
 INTO SF_Account
 FROM V_DonorAddress a
 LEFT OUTER JOIN booklist b
@@ -195,7 +222,12 @@ LEFT OUTER JOIN recognitionlist g
   ON a.did = g.did
 LEFT OUTER JOIN Gifts h
   ON a.did = h.did
+LEFT OUTER JOIN Load_Attributes i
+  ON a.did = i.did
+LEFT OUTER JOIN PhoneBank j
+  ON a.did = j.did
 WHERE a.defaultaddr = 1
+
 
 /*Update Preferences*/
 --SolicitationSchedule
@@ -299,6 +331,25 @@ FROM SF_Account a INNER JOIN Load_Mail m
 WHERE uniquekey IN ('CRUISE FUTURE', 'CRUISE NO')
 
 
+/*Update legacy*/
+--Deceased legacies
+UPDATE a
+SET LegacySocietyStatus = CASE la.uniquekey 
+							WHEN 'EXECUTIVE MEMBER' THEN 'L1=Confirmed Estate Gift (Executive Member)'
+							WHEN 'LEGACY CLUB' THEN 'L2=Pledged Estate Gift'
+							WHEN 'LC PLAN' THEN 'L3=Planned Estate Gift'
+							WHEN 'LEGACY' THEN 'L4 = Requested Legacy Information'
+							WHEN 'TORCH OF FREEDOM' THEN 'TORCH OF FREEDOM'
+						    ELSE ''
+						   END 
+FROM SF_Account a INNER JOIN Load_Attributes la
+  on a.did = la.did
 
+UPDATE SF_Account
+SET LegacySocietyStatus = 'LD = Deceased Legacy Society Member'
+WHERE did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'DECEASED')
+  AND LegacySocietyStatus IS NOT NULL
 
-
+  select *
+  from SF_Account
+  where phonelist is not null

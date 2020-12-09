@@ -3,6 +3,14 @@
 /* and Recognition into delimited string fields. Only default addresses are included.                                                     */
 /******************************************************************************************************************************************/
 
+
+/*
+
+This script can and should be cleaned up/organized. It doesn't take long to run, but we don't need to hit tables multiple times (for example the load_attributes table).
+
+
+*/
+
 USE YAF
 
 DROP TABLE IF EXISTS SF_Account
@@ -107,9 +115,39 @@ PhoneBank as (
  FROM load_phones
  WHERE phone <> ''
  GROUP BY did
+),
+Speakers as (
+SELECT DISTINCT did, Description
+FROM Load_Attributes
+WHERE uniquekey = 'SPEAKER'
+),
+SpeakerList as (
+SELECT did, STRING_AGG(Description, ';') WITHIN GROUP (ORDER BY Description asc) 'SpeakerList'
+FROM Speakers
+GROUP BY did
+),
+SpeakerDislike as (
+SELECT DISTINCT did, Description
+FROM Load_Attributes
+WHERE uniquekey = 'SPEAKER DISLIKE'
+),
+SpeakerDislikeList as (
+SELECT did, STRING_AGG(Description, ';') WITHIN GROUP (ORDER BY Description asc) 'SpeakerDislikeList'
+FROM SpeakerDislike
+GROUP BY did
+),
+AccountSource as (
+SELECT DISTINCT did, description
+FROM Load_Attributes
+WHERE uniquekey IN ('ORIGLIST', 'SOURCE')
+),
+AccountSourceList as (
+SELECT did, STRING_AGG(Description, ';') WITHIN GROUP (ORDER BY Description asc) 'AccountSourceList'
+FROM AccountSource
+GROUP BY did
 )
 
-SELECT DISTINCT TOP 5000
+SELECT DISTINCT TOP 150000
   a.did,
   a.title,
   a.name,
@@ -204,7 +242,18 @@ SELECT DISTINCT TOP 5000
   h.Gifts2017,
   h.Gifts2018,
 
-  j.PhoneList
+
+  j.PhoneList,
+  k.SpeakerList,
+  l.SpeakerDislikeList,
+  m.AccountSourceList,
+  CAST('' AS VARCHAR(15)) 'GivingCapacity',
+  CAST('' AS VARCHAR(15)) 'DeletedReason',
+  CAST(NULL AS DATE) 'DeletedDate',
+  CAST(0 AS BIT) 'MikeReganTY',
+  CAST('' AS VARCHAR(20)) 'DonorClubLevel',
+  CAST(0 AS BIT) 'SpecialDonor',
+  CAST('' AS VARCHAR(20)) 'ProfessionalMailingList'
 
 INTO SF_Account
 FROM V_DonorAddress a
@@ -226,6 +275,12 @@ LEFT OUTER JOIN Load_Attributes i
   ON a.did = i.did
 LEFT OUTER JOIN PhoneBank j
   ON a.did = j.did
+LEFT OUTER JOIN SpeakerList k
+  ON a.did = k.did
+LEFT OUTER JOIN SpeakerDislikeList l
+  ON a.did = l.did
+LEFT OUTER JOIN AccountSourceList m
+  ON a.did = m.did
 WHERE a.defaultaddr = 1
 
 
@@ -261,7 +316,6 @@ FROM SF_Account a INNER JOIN Load_Mail m
 
 
 --BusinessReplyEnvolopeRequired
---This COULD be done on the SELECT INTO by checking the MailList field, but 'BRE' is a short string to try to accurately match on.
 UPDATE a
 SET a.BusinessReplyEnvolopeRequired = 1
 FROM SF_Account a INNER JOIN Load_Mail m
@@ -278,6 +332,11 @@ SET a.ThankYouLetterPreference = CASE m.uniquekey
 FROM SF_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 
+UPDATE a
+SET a.ThankYouLetterPreference = 'Send EOY Statement Only'
+FROM SF_Account a INNER JOIN Load_Attributes la
+  on a.did = la.did
+WHERE la.uniquekey = 'YEARLY STATEMENT'
 
 --StudentThankyou
 UPDATE a
@@ -332,24 +391,89 @@ WHERE uniquekey IN ('CRUISE FUTURE', 'CRUISE NO')
 
 
 /*Update legacy*/
---Deceased legacies
 UPDATE a
 SET LegacySocietyStatus = CASE la.uniquekey 
 							WHEN 'EXECUTIVE MEMBER' THEN 'L1=Confirmed Estate Gift (Executive Member)'
 							WHEN 'LEGACY CLUB' THEN 'L2=Pledged Estate Gift'
 							WHEN 'LC PLAN' THEN 'L3=Planned Estate Gift'
 							WHEN 'LEGACY' THEN 'L4 = Requested Legacy Information'
-							WHEN 'TORCH OF FREEDOM' THEN 'TORCH OF FREEDOM'
+							WHEN 'TORCH OF FREEDOM' THEN 'Torch of Freedom'
 						    ELSE ''
 						   END 
 FROM SF_Account a INNER JOIN Load_Attributes la
   on a.did = la.did
 
+--Deceased legacies
 UPDATE SF_Account
 SET LegacySocietyStatus = 'LD = Deceased Legacy Society Member'
 WHERE did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'DECEASED')
   AND LegacySocietyStatus IS NOT NULL
 
-  select *
+--GivingCapacity
+UPDATE a
+SET GivingCapacity = CASE la.uniquekey
+						WHEN 'WEALTHENGINE300-499K' THEN '$300K-$499K'
+						WHEN 'WEALTHENGINE500-999K' THEN '$500K-$999K'
+						WHEN 'WEALTHENGINE $1-4.9M' THEN '$1M-$4.9M'
+						WHEN 'WEALTHENGINE $5M+'	THEN '$5M+'
+						ELSE ''
+					END
+FROM SF_Account a INNER JOIN Load_Attributes la
+  ON a.did = la.did
+
+/*Deleted*/
+UPDATE a
+SET a.DeletedReason = CASE la.uniquekey 
+						WHEN 'DECEASED' THEN 'Deceased'
+						WHEN 'DELETED' THEN 'Deleted'
+						ELSE '' 
+					  END ,
+	a.DeletedDate = dated --dated always has the date, descriptions sometimes has initials
+FROM SF_Account a INNER JOIN Load_Attributes la
+  on a.did = la.did
+WHERE la.uniquekey IN ('DELETED DATE', 'DELETED', 'DECEASED') 
+
+--
+UPDATE a
+SET a.MikeReganTY = CASE WHEN uniquekey = 'MIKE REAGAN T.Y.' THEN 1 ELSE 0 END,
+	a.DonorClubLevel = CASE WHEN uniquekey = 'RAWHIDE CIRCLE' THEN 'Rawhide Circle' ELSE '' END,
+	a.SpecialDonor = CASE WHEN uniquekey = 'SPECIAL DONOR' THEN 1 ELSE 0 END ,
+	a.ProfessionalMailingList = CASE uniquekey 
+									WHEN 'ESTATE PLANNING' THEN 'Estate Planning'
+									WHEN 'ALLIED ATTORNEY' THEN 'Allied Attorney'
+									ELSE '' 
+								 END
+FROM SF_Account a INNER JOIN Load_Attributes la
+  on a.did = la.did
+
+
+
+
+  select top 500*
   from SF_Account
-  where phonelist is not null
+  where ProfessionalMailingList <> ''
+
+  SELECT *
+  FROM SF_Account
+  WHERE DeletedReason = '' AND DeletedDate IS NOT NULL
+
+  select *
+  from Load_Attributes
+  where uniquekey like 'speaker%'
+
+
+  SELECT *
+  FROM Load_Attributes
+  WHERE uniquekey = 'WEALTHENGINE300-499K'
+
+  SELECT *
+  FROM Load_Donor
+  where did = 185656
+
+  select *
+  from Load_AltAddr
+  where did = 185656
+
+  select *
+  from V_DonorAddress
+  where did = 185656

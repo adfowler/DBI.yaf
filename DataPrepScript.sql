@@ -15,7 +15,24 @@ USE YAF
 
 DROP TABLE IF EXISTS SF_Account
 
-;WITH bk1 AS (
+;WITH 
+at1 AS (
+  SELECT DISTINCT
+    did,
+    CASE
+      WHEN charindex(uniquekey, description) > 0    THEN description  -- uniquekey is included in the description
+      WHEN description = ' ' OR description IS NULL THEN uniquekey
+      WHEN uniquekey   = ' ' OR uniquekey   IS NULL THEN description
+      ELSE uniquekey + ' (' + description + ')'                       -- enclose description in parenthesis
+    END 'Attribute'
+  FROM Load_Attributes
+),
+attributelist AS (
+  SELECT did, STRING_AGG(Attribute, ';')  WITHIN GROUP (ORDER BY Attribute ASC) 'AttributeList'
+  FROM at1
+  GROUP BY did
+),
+bk1 AS (
   SELECT DISTINCT did, uniquekey
   FROM Load_Books
 ),
@@ -247,6 +264,7 @@ SELECT DISTINCT TOP 150000
   k.SpeakerList,
   l.SpeakerDislikeList,
   m.AccountSourceList,
+  n.AttributeList,
   CAST('' AS VARCHAR(15)) 'GivingCapacity',
   CAST('' AS VARCHAR(15)) 'DeletedReason',
   CAST(NULL AS DATE) 'DeletedDate',
@@ -281,6 +299,8 @@ LEFT OUTER JOIN SpeakerDislikeList l
   ON a.did = l.did
 LEFT OUTER JOIN AccountSourceList m
   ON a.did = m.did
+LEFT OUTER JOIN attributelist n
+  ON a.did = n.did
 WHERE a.defaultaddr = 1
 
 

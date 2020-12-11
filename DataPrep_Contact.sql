@@ -4,16 +4,17 @@ DROP TABLE IF EXISTS SF_Contact
 select 	--ckey 'ReaganomicsContactID',
 		'P' + CAST(did AS VARCHAR(10))'ReaganomicsContactID',
 		did,
-		b.Honorific 'Salutation',
-		b.FirstName,
-		b.MiddleName,
-		b.LastName,
-		b.Suffix,
+		CASE WHEN b.Honorific = '' THEN a.title ELSE b.Honorific END 'Salutation',
+		CASE WHEN b.FirstName = '' THEN a.first ELSE b.FirstName END 'FirstName',
+		CASE WHEN b.MiddleName = '' THEN a.middle ELSE b.MiddleName END 'MiddleName', 
+		CASE WHEN b.LastName = '' THEN a.last ELSE b.LastName END 'LastName',
+		CASE WHEN b.Suffix = '' THEN a.suffix ELSE b.Suffix END 'Suffix',
 		'Primary' 'relation',
 		a.dateofbirth 'birthday',
 		a.dateofdeath,
-		a.emailaddress,
-		a.phone 'cphone',
+		CASE WHEN a.dateofdeath IS NOT NULL THEN 1 ELSE 0 END 'IndDeceased',
+		ISNULL(a.emailaddress, '') 'EmailAddress',
+		ISNULL(a.phone, '') 'cphone',
 		'' 'alma_mater',
 		'' 'grad_date',
 		0 'BoardOfGovernrs',
@@ -25,15 +26,9 @@ select 	--ckey 'ReaganomicsContactID',
 into SF_Contact
 from V_DonorAddress a inner join Parser_Post b
   on a.did = b.DbId
-where did IN (SELECT did FROM SF_Account) --accounts need to be loaded first
---did in (select DbId from parser_post where spousefirstname <> '')  and
-      /*did in (23978,23981,23986,23989,23991,23993,23995,23999,24000,24005,24006,24009,24016,24021,24022,24026,24027,24030,24042,24044,
-24045,24047,24049,24051,24053,24054,24055,24056,24061,24062,24064,24066,24071,24073,24074,24075,24076,24079,24082,24084,24086,
-24090,24092,24094,24096,24098,24102,24105,24107,24110,24111,24112,24113,24115,24118,24120,24129,24270,24381,24427,24525,
-24572,24663,24700,24734,24833,24882,24932,24965,24986,25084,25171,25212,25227,25277,25328,25442,25499,25628,25832,25881,
-26019,26085,26110,26168,26303,26347,26365,26608,26691,26804,27056,27072,27195,27223,27256,27258,27670,27809,27867,27869,
-27942);--IN Account
-*/
+where did in (select did from SF_Account) and
+      a.defaultaddr = 1
+
 --spouses
 INSERT INTO SF_Contact 
 select 	'S' + DbId 'ReaganomicsContactID',
@@ -46,10 +41,11 @@ select 	'S' + DbId 'ReaganomicsContactID',
 		'Spouse' 'relation',
 		NULL 'birthday',
 		NULL 'DateOfDeath',
+		0 'IndDeceased',
+		'' 'email_address',
 		b.cphone,
 		'' 'alma_mater',
 		'' 'grad_date',
-		'' 'email_address',
 		0 'BoardOfGovernrs',
 		0 'RRCDocent',
 		0 'BoardOfDirectors',
@@ -62,36 +58,27 @@ WHERE  SpouseFirstName <> ''
 
 /*Updates*/
 --BoardOfGovernors
-UPDATE c
-SET c.BoardOfGovernrs = 1
-FROM SF_Contact c INNER JOIN Load_Attributes a
-  on c.did = a.did
-WHERE a.uniquekey = 'BOARD OF GOVERNORS' AND
-      c.ReaganomicsContactID LIKE 'P%'
+UPDATE SF_Contact
+SET BoardOfGovernrs = 1
+WHERE did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'BOARD OF GOVERNORS') AND
+	  ReaganomicsContactID LIKE 'P%' --Primary contact
 
 --RRCDocent
-UPDATE c
-SET c.RRCDocent = 1
-FROM SF_Contact c INNER JOIN Load_Attributes a
-  on c.did = a.did
-WHERE a.uniquekey = 'RRC Docent' AND
-      c.ReaganomicsContactID LIKE 'P%'
+UPDATE SF_Contact
+SET RRCDocent = 1
+WHERE did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'RRC DOCENT') AND
+	  ReaganomicsContactID LIKE 'P%' --Primary contact
 
 --BoardOfDirectors
-UPDATE c
-SET c.BoardOfDirectors = 1
-FROM SF_Contact c INNER JOIN Load_Attributes a
-  on c.did = a.did
-WHERE a.uniquekey = 'BOARD OF DIRECTORS' AND
-      c.ReaganomicsContactID LIKE 'P%'
-
+UPDATE SF_Contact
+SET BoardOfDirectors = 1
+WHERE did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'BOARD OF DIRECTORS') AND
+	  ReaganomicsContactID LIKE 'P%' --Primary contact
 
 --Parents
-UPDATE c
-SET c.Parents = 1
-FROM SF_Contact c INNER JOIN Load_Attributes a
-  on c.did = a.did
-WHERE a.uniquekey = 'PARENTS'
+UPDATE SF_Contact
+SET Parents = 1
+WHERE did IN (SELECT did FROM Load_Attributes WHERE description LIKE '%Parents of conference%') 
 
 
 --Anniversary
@@ -101,6 +88,7 @@ FROM SF_Contact c INNER JOIN Load_Personal p
   on c.did = p.did
 WHERE p.uniquekey = 'anniversary'
 
+
 --Veteran
 UPDATE c
 SET c.Veteran = p.description
@@ -108,6 +96,3 @@ FROM SF_Contact c INNER JOIN Load_Personal p
   on c.did = p.did
 WHERE p.uniquekey = 'veteran'
 
-
-select *
-from SF_Contact

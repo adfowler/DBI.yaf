@@ -164,7 +164,7 @@ FROM AccountSource
 GROUP BY did
 )
 
-SELECT DISTINCT TOP 150000
+SELECT DISTINCT 
   a.did,
   a.title,
   a.name,
@@ -270,8 +270,10 @@ SELECT DISTINCT TOP 150000
   CAST(NULL AS DATE) 'DeletedDate',
   CAST(0 AS BIT) 'MikeReganTY',
   CAST('' AS VARCHAR(20)) 'DonorClubLevel',
-  CAST(0 AS BIT) 'SpecialDonor',
-  CAST('' AS VARCHAR(20)) 'ProfessionalMailingList'
+  CAST('False' AS VARCHAR(5)) 'SpecialDonor',
+  CAST('' AS VARCHAR(20)) 'ProfessionalMailingList',
+  CAST('' AS VARCHAR(20)) 'AccountType',
+  CAST('' AS VARCHAR(30)) 'LegacySource'
 
 INTO SF_Account
 FROM V_DonorAddress a
@@ -301,10 +303,12 @@ LEFT OUTER JOIN AccountSourceList m
   ON a.did = m.did
 LEFT OUTER JOIN attributelist n
   ON a.did = n.did
-WHERE a.defaultaddr = 1
+WHERE a.defaultaddr = 1 and
+	  a.did in (select reaganomics_id__c from staging..loadedaccounts where Reaganomics_ID__c > '')
 
 
-/*Update Preferences*/
+/*Update Mail Preferences*/
+--Some of these that match on longer strings can be combinied into 1 update statement. The BRE and YEARLY matches should still be kept separately since they are smaller common strings that could lead to mis mappings.
 --SolicitationSchedule
 UPDATE a
 SET a.SolicitationSchedule = CASE m.uniquekey
@@ -351,6 +355,7 @@ SET a.ThankYouLetterPreference = CASE m.uniquekey
 								 END
 FROM SF_Account a INNER JOIN Load_Mail m
   on a.did = m.did
+WHERE uniquekey IN ('E-MAIL THANK YOU', 'NO THANK YOU LTR')
 
 UPDATE a
 SET a.ThankYouLetterPreference = 'Send EOY Statement Only'
@@ -410,68 +415,69 @@ FROM SF_Account a INNER JOIN Load_Mail m
 WHERE uniquekey IN ('CRUISE FUTURE', 'CRUISE NO')
 
 
-/*Update legacy*/
-UPDATE a
-SET LegacySocietyStatus = CASE la.uniquekey 
-							WHEN 'EXECUTIVE MEMBER' THEN 'L1=Confirmed Estate Gift (Executive Member)'
-							WHEN 'LEGACY CLUB' THEN 'L2=Pledged Estate Gift'
-							WHEN 'LC PLAN' THEN 'L3=Planned Estate Gift'
-							WHEN 'LEGACY' THEN 'L4 = Requested Legacy Information'
-							WHEN 'TORCH OF FREEDOM' THEN 'Torch of Freedom'
-						    ELSE ''
-						   END 
-FROM SF_Account a INNER JOIN Load_Attributes la
-  on a.did = la.did
+
+/*Attributes*/
+--This is cleaner than the way we hit the Load_Mail table over and over above, however we have to be careful with similar strings while using LIKE. Ex. LegacySocietyStatus matches on both LEGACY and LEGACY CLUB.
+UPDATE SF_Account
+SET MikeReganTY = CASE WHEN AttributeList LIKE '%MIKE REAGAN T.Y.%' THEN 1 ELSE 0 END,
+	DonorClubLevel =  CASE WHEN AttributeList LIKE '%RAWHIDE CIRCLE%' THEN 'Rawhide Circle' ELSE '' END,
+	SpecialDonor = CASE WHEN AttributeList LIKE '%SPECIAL DONOR%' THEN 'True' ELSE SpecialDonor END,
+	ProfessionalMailingList = CASE WHEN AttributeList LIKE '%ESTATE PLANNING%' THEN 'Estate Planning'
+								   WHEN AttributeList LIKE '%ALLIED ATTORNEY%' THEN 'Allied Attorney'
+								   ELSE ''
+							   END,
+	AccountType = CASE WHEN AttributeList LIKE '%ALUMNI%' THEN '0124W0000007acaQAA' ELSE AccountType END, --this is the code in Salesforce that will transalte to Alumnus Record on import/update
+	DeletedReason = CASE WHEN AttributeList LIKE '%DECEASED%' THEN 'Deceased'
+						 WHEN AttributeList LIKE '%DELETED%' THEN 'Deleted'
+						 ELSE ''
+					END,
+	GivingCapacity = CASE WHEN AttributeList LIKE '%WEALTHENGINE300-499K%' THEN '$300K-$499K'
+						  WHEN AttributeList LIKE '%WEALTHENGINE500-999K%' THEN '$500K-$999K'
+						  WHEN AttributeList LIKE '%WEALTHENGINE $1-4.9M%' THEN '$1M-$4.9M'
+						  WHEN AttributeList LIKE '%WEALTHENGINE $5M+%'	   THEN '$5M+'
+						  ELSE ''
+					END,
+	LegacySocietyStatus = CASE WHEN AttributeList LIKE '%EXECUTIVE MEMBER%' THEN 'L1=Confirmed Estate Gift (Executive Member)'
+							   WHEN AttributeList LIKE '%LEGACY CLUB%' THEN 'L2=Pledged Estate Gift'	--This needs to be matched on before the '%LEGACY%' match for L4.
+							   WHEN AttributeList LIKE '%LC PLAN%' THEN 'L3=Planned Estate Gift'
+							   WHEN AttributeList LIKE '%LEGACY%' THEN 'L4 = Requested Legacy Information'
+							   WHEN AttributeList LIKE '%TORCH OF FREEDOM%' THEN 'Torch of Freedom'
+							   ELSE ''
+						  END
 
 --Deceased legacies
 UPDATE SF_Account
 SET LegacySocietyStatus = 'LD = Deceased Legacy Society Member'
-WHERE did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'DECEASED')
+WHERE AttributeList LIKE '%DECEASED%'
   AND LegacySocietyStatus IS NOT NULL
 
---GivingCapacity
+--LegacySource
 UPDATE a
-SET GivingCapacity = CASE la.uniquekey
-						WHEN 'WEALTHENGINE300-499K' THEN '$300K-$499K'
-						WHEN 'WEALTHENGINE500-999K' THEN '$500K-$999K'
-						WHEN 'WEALTHENGINE $1-4.9M' THEN '$1M-$4.9M'
-						WHEN 'WEALTHENGINE $5M+'	THEN '$5M+'
-						ELSE ''
-					END
+SET a.LegacySource = la.description
 FROM SF_Account a INNER JOIN Load_Attributes la
-  ON a.did = la.did
+  on a.did = la.did
+WHERE la.uniquekey = 'LEGACY'
 
-/*Deleted*/
+
+--DeletedDate
 UPDATE a
-SET a.DeletedReason = CASE la.uniquekey 
-						WHEN 'DECEASED' THEN 'Deceased'
-						WHEN 'DELETED' THEN 'Deleted'
-						ELSE '' 
-					  END ,
-	a.DeletedDate = dated --dated always has the date, descriptions sometimes has initials
+SET DeletedDate = dated
 FROM SF_Account a INNER JOIN Load_Attributes la
   on a.did = la.did
 WHERE la.uniquekey IN ('DELETED DATE', 'DELETED', 'DECEASED') 
 
---
-UPDATE a
-SET a.MikeReganTY = CASE WHEN uniquekey = 'MIKE REAGAN T.Y.' THEN 1 ELSE 0 END,
-	a.DonorClubLevel = CASE WHEN uniquekey = 'RAWHIDE CIRCLE' THEN 'Rawhide Circle' ELSE '' END,
-	a.SpecialDonor = CASE WHEN uniquekey = 'SPECIAL DONOR' THEN 1 ELSE 0 END ,
-	a.ProfessionalMailingList = CASE uniquekey 
-									WHEN 'ESTATE PLANNING' THEN 'Estate Planning'
-									WHEN 'ALLIED ATTORNEY' THEN 'Allied Attorney'
-									ELSE '' 
-								 END
-FROM SF_Account a INNER JOIN Load_Attributes la
-  on a.did = la.did
 
 
+---------------------------------------------------------------
 
 
   select top 500*
   from SF_Account
-  where ProfessionalMailingList <> ''
+  where AttributeList like '%LEGACY CLUB%'
+
+  select *
+  from SF_Account
+  where MailList like '%PROSPECT LIST b%'
 
   SELECT *
   FROM SF_Account

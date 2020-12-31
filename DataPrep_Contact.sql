@@ -12,7 +12,7 @@ select 	--ckey 'ReaganomicsContactID',
 		'Primary' 'relation',
 		a.dateofbirth 'birthday',
 		a.dateofdeath,
-		CASE WHEN a.dateofdeath IS NOT NULL THEN 1 ELSE 0 END 'IndDeceased',
+		CASE WHEN a.dateofdeath IS NOT NULL OR did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'DECEASED' or description = 'DECEASED') THEN 1 ELSE 0 END 'IndDeceased',
 		ISNULL(a.emailaddress, '') 'EmailAddress',
 		ISNULL(a.phone, '') 'cphone',
 		'' 'alma_mater',
@@ -28,6 +28,8 @@ from V_DonorAddress a inner join Parser_Post b
   on a.did = b.DbId
 where did in (select did from SF_Account) and
       a.defaultaddr = 1
+
+	    CREATE INDEX idx_SF_Contact ON SF_Contact(did)
 
 --spouses
 INSERT INTO SF_Contact 
@@ -57,6 +59,13 @@ select 	'S' + DbId 'ReaganomicsContactID',
 WHERE  SpouseFirstName <> ''
 
 /*Updates*/
+--dateof death
+UPDATE a
+SET a.dateofdeath = b.dated
+FROM SF_Contact a INNER JOIN Load_Attributes b
+  on a.did = b.did
+WHERE a.dateofdeath is null and (b.uniquekey = 'DECEASED' or b.description = 'DECEASED')
+
 --BoardOfGovernors
 UPDATE SF_Contact
 SET BoardOfGovernrs = 1
@@ -96,3 +105,66 @@ FROM SF_Contact c INNER JOIN Load_Personal p
   on c.did = p.did
 WHERE p.uniquekey = 'veteran'
 
+CREATE INDEX idx_SF_Contact_ReaganomicsContactID on SF_Contact (ReaganomicsContactID)
+--CREATE INDEX idx_LoadedAccounts_ReaganomicsContactID on Staging..LoadedContacts (Reaganomics_Contact_ID__c)
+
+
+ALTER VIEW V_SFContact_Export as 
+SELECT *
+FROM SF_Contact
+WHERE ReaganomicsContactID NOT IN (SELECT Reaganomics_Contact_ID__c FROM Staging..LoadedContacts)
+ORDER BY did
+
+DELETE FROM SF_Contact
+WHERE DID NOT IN (SELECT DID FROM V_SFContact_Export)
+
+
+--Blank last names
+ALTER TABLE SF_Contact
+ALTER COLUMN LastName varchar(100)
+
+UPDATE a
+SET a.LastName = b.institution
+FROM SF_Contact a INNER JOIN V_DonorAddress b
+  on a.did = b.did
+WHERE (a.LastName = '' or a.LastName is null)
+and a.ReaganomicsContactID LIKE 'P%'
+
+
+--Bad emails
+UPDATE SF_Contact
+SET emailaddress = ''
+WHERE emailaddress not like '%@%.%' or
+	  emailaddress like '%@%@%' or
+	  EmailAddress like '%..%'or
+	  EmailAddress like '%.'
+
+
+UPDATE SF_Contact
+SET EmailAddress = REPLACE(EmailAddress, ' ' ,'')
+
+--After it keeps failing
+UPDATE SF_Contact
+SET EmailAddress = ''
+
+
+SELECT *
+FROM SF_Contact
+where LastName = ''
+
+select *
+from Load_Donor
+where did = 362345
+
+UPDATE SF_Contact
+SET LastName = 'Hunter'
+WHERE did = 362345
+
+select *
+from SF_Contact
+where did = 435710
+
+
+select *
+from V_DonorAddress
+where did = 435710

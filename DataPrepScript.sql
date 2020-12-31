@@ -181,7 +181,7 @@ SELECT DISTINCT
   a.dateofdeath,
 --  a.strDonorImage,
   a.ModifiedUserId,
-  a.emailaddress,
+  REPLACE(a.emailaddress, ' ', '') 'emailaddress',
   a.frozen,
   a.spousedod,
   a.movemgr2,
@@ -206,7 +206,7 @@ SELECT DISTINCT
   a.alt_from,
   a.alt_to,
 --  a.alt_annual,
-  a.institution,
+  REPLACE(a.institution, '"', '') 'institution',
   a.phone,
   a.defaultaddr,
   a.longitude,
@@ -273,7 +273,7 @@ SELECT DISTINCT
   CAST('False' AS VARCHAR(5)) 'SpecialDonor',
   CAST('' AS VARCHAR(20)) 'ProfessionalMailingList',
   CAST('' AS VARCHAR(20)) 'AccountType',
-  CAST('' AS VARCHAR(30)) 'LegacySource'
+  CAST('' AS VARCHAR(50)) 'LegacySource'
 
 INTO SF_Account
 FROM V_DonorAddress a
@@ -303,10 +303,11 @@ LEFT OUTER JOIN AccountSourceList m
   ON a.did = m.did
 LEFT OUTER JOIN attributelist n
   ON a.did = n.did
-WHERE a.defaultaddr = 1 and
-	  a.did in (select reaganomics_id__c from staging..loadedaccounts where Reaganomics_ID__c > '')
+WHERE a.defaultaddr = 1 --AND A.did IN (SELECT Reaganomics_ID__c FROM Staging..LoadedAccounts WHERE Reaganomics_ID__c <> '')
+--and a.did not in (select did from staging..YAF_LoadedAccounts)
+  --and a.did in (select reaganomics_id__c from staging..loadedaccounts where Reaganomics_ID__c > '')
 
-
+  CREATE INDEX idx_SF_Account ON SF_Account(did)
 /*Update Mail Preferences*/
 --Some of these that match on longer strings can be combinied into 1 update statement. The BRE and YEARLY matches should still be kept separately since they are smaller common strings that could lead to mis mappings.
 --SolicitationSchedule
@@ -426,8 +427,8 @@ SET MikeReganTY = CASE WHEN AttributeList LIKE '%MIKE REAGAN T.Y.%' THEN 1 ELSE 
 								   WHEN AttributeList LIKE '%ALLIED ATTORNEY%' THEN 'Allied Attorney'
 								   ELSE ''
 							   END,
-	AccountType = CASE WHEN AttributeList LIKE '%ALUMNI%' THEN '0124W0000007acaQAA' ELSE AccountType END, --this is the code in Salesforce that will transalte to Alumnus Record on import/update
-	DeletedReason = CASE WHEN AttributeList LIKE '%DECEASED%' THEN 'Deceased'
+	AccountType = CASE WHEN AttributeList LIKE '%ALUMNI%' THEN '0124W0000007acaQAA' ELSE '0124W00000075jJQAQ' END, --this is the code in Salesforce that will transalte to Alumnus Record on import/update
+	DeletedReason = CASE WHEN AttributeList LIKE '%DECEASED%' OR did IN (SELECT did FROM V_DonorAddress WHERE dateofdeath IS NOT NULL) THEN 'Deceased'
 						 WHEN AttributeList LIKE '%DELETED%' THEN 'Deleted'
 						 ELSE ''
 					END,
@@ -466,8 +467,77 @@ FROM SF_Account a INNER JOIN Load_Attributes la
   on a.did = la.did
 WHERE la.uniquekey IN ('DELETED DATE', 'DELETED', 'DECEASED') 
 
+UPDATE a
+SET DeletedDate = b.dateofdeath
+FROM SF_Account a INNER JOIN V_DonorAddress b
+  on a.did = b.did
+WHERE b.did IS NOT NULL AND
+      a.DeletedDate IS NULL AND
+	  a.DeletedReason = 'DECEASED'
 
 
+/*Clean up*/
+--blank names
+--pass 1 - set to first + last name
+UPDATE SF_Account
+SET name = first + ' ' + last
+WHERE did NOT IN (SELECT Reaganomics_ID__c FROM Staging..LoadedAccounts WHERE Reaganomics_ID__c <> '')
+ AND (name IS NULL OR name = '')
+ AND first <> ''
+ AND first IS NOT NULL
+
+--pass 2 - set to company
+UPDATE SF_Account
+SET name = institution
+WHERE did NOT IN (SELECT Reaganomics_ID__c FROM Staging..LoadedAccounts WHERE Reaganomics_ID__c <> '')
+ AND (name IS NULL OR name = '')
+ AND (institution IS NOT NULL OR institution <> '')
+
+UPDATE SF_Account
+SET name = NULL
+WHERE name = ''
+
+--Bad emails
+UPDATE SF_Account
+SET emailaddress = ''
+WHERE emailaddress not like '%@%.%' or
+	  emailaddress like '%@%@%'
+
+      
+/*1 off emails*/
+--after everything else and it is still being returned as a bad email
+UPDATE SF_Account
+SET emailaddress = CASE emailaddress
+					WHEN 'helenMaryWarren@massmail.state.ma.' THEN 'helenMaryWarren@massmail.state.ma'
+					WHEN 'D.DA34@&Yahoo.com' THEN 'D.DA34@Yahoo.com'
+					WHEN 'don.covert@g,mail.com' THEN 'don.covert@gmail.com'
+					WHEN 'reesae@aol..com' THEN 'reesae@aol.com'
+					ELSE ''
+				  END
+
+
+
+DELETE
+FROM SF_Account
+WHERE did NOT IN (SELECT Reaganomics_ID__c FROM Staging..LoadedAccounts WHERE Reaganomics_ID__c <> '')
+
+
+select *
+from SF_Account
+where emailaddress <>''
+
+SELECT *
+FROM Parser_Post
+WHERE DBID = 399364
+
+SELECT *
+FROM SF_Account
+WHERE DID = 71603
+
+SELECT b.DbId, b.FullName, b.FirstName, b.MiddleName, b.LastName, a.name, a.first, a.middle, a.last
+from V_DonorAddress a inner join Parser_Post b
+  on a.did = b.DbId
+where a.did = 399364
 ---------------------------------------------------------------
 
 

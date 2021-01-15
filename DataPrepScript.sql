@@ -6,7 +6,7 @@
 
 /*
 
-This script can and should be cleaned up/organized. It doesn't take long to run, but we don't need to hit tables multiple times (for example the load_attributes table).
+This script can and should be cleaned up/organized. It doesn't take long to run, but we don't need to hit tables multiple times (for exACMEle the load_attributes table).
 
 
 */
@@ -166,25 +166,25 @@ GROUP BY did
 
 SELECT DISTINCT 
   a.did,
-  a.title,
-  a.name,
-  a.first,
-  a.middle,
-  a.last,
-  a.suffix,
-  a.salutation,
+  ISNULL(a.title, '') 'title',
+  ISNULL(a.name, '') 'name',
+  ISNULL(a.first, '') 'first',
+  ISNULL(a.middle, '') 'middle',
+  ISNULL(a.last, '') 'last',
+  ISNULL(a.suffix, '') 'suffix',
+  ISNULL(a.salutation, '') 'salutation',
   a.add_date,
---  a.stamp,
+--  a.stACME,
   a.cumulative,
-  a.movemgr,
-  a.dateofbirth,
-  a.dateofdeath,
+  ISNULL(a.movemgr, '') 'movemgr',
+  ISNULL(a.dateofbirth, '') 'dateofbirth',
+  ISNULL(a.dateofdeath, '') 'dateofdeath',
 --  a.strDonorImage,
-  a.ModifiedUserId,
+  ISNULL(a.ModifiedUserId, '') 'ModifiedUserId',
   REPLACE(a.emailaddress, ' ', '') 'emailaddress',
-  a.frozen,
-  a.spousedod,
-  a.movemgr2,
+  ISNULL(a.frozen, 0) 'frozen',
+  ISNULL(a.spousedod, '') 'spousedod',
+  ISNULL(a.movemgr2, '') 'movemgr2',
   a.akey,
   --a.addr_type,
   CASE WHEN addr_type LIKE '%HOME%' and addr_type <> '2ND HOME' THEN 'Home'
@@ -196,23 +196,23 @@ SELECT DISTINCT
 			WHEN addr_type LIKE 'OTHER%' AND institution LIKE '%Foundation%' THEN 'Foundation'
 			WHEN addr_type LIKE 'VACATION' THEN 'Vacation'
 			WHEN addr_type LIKE '%WINTER%' THEN 'Winter Home'
-			ELSE NULL
+			ELSE ''
 		END 'Type',
   --a.addr2,
-  a.street + ' ' + a.addr2 'BillingStreet',
-  a.city,
-  a.state,
-  a.zip,
-  a.alt_from,
-  a.alt_to,
+  ISNULL(a.street,'') + ' ' + ISNULL(a.addr2, '') 'BillingStreet',
+  ISNULL(a.city, '') 'city',
+  ISNULL(a.state, '') 'state',
+  ISNULL(a.zip, '') 'zip',
+  ISNULL(a.alt_from, '') 'alt_from',
+  ISNULL(a.alt_to, '') 'alt_to',
 --  a.alt_annual,
-  REPLACE(a.institution, '"', '') 'institution',
-  a.phone,
+  REPLACE(ISNULL(a.institution, '') , '"', '') 'institution',
+  ISNULL(a.phone, '') 'phone',
   a.defaultaddr,
   a.longitude,
   a.latitude,
-  a.country,
-  a.vanity,
+  ISNULL(a.country, '') 'country',
+  ISNULL(a.vanity, '') 'vanity',
   CASE WHEN a.frozen = 1 THEN 'Frozen'
 	   WHEN a.Deleted = 1 THEN 'Deleted'
 	   WHEN h.FirstGift >= DATEADD(month, -12, GETDATE()) THEN 'New'
@@ -273,8 +273,8 @@ SELECT DISTINCT
   CAST('False' AS VARCHAR(5)) 'SpecialDonor',
   CAST('' AS VARCHAR(20)) 'ProfessionalMailingList',
   CAST('' AS VARCHAR(20)) 'AccountType',
-  CAST('' AS VARCHAR(50)) 'LegacySource'
-
+  CAST('' AS VARCHAR(50)) 'LegacySource',
+  CAST(0 AS BIT) 'IndAnonymous'
 INTO SF_Account
 FROM V_DonorAddress a
 LEFT OUTER JOIN booklist b
@@ -481,21 +481,24 @@ WHERE b.did IS NOT NULL AND
 --pass 1 - set to first + last name
 UPDATE SF_Account
 SET name = first + ' ' + last
-WHERE did NOT IN (SELECT Reaganomics_ID__c FROM Staging..LoadedAccounts WHERE Reaganomics_ID__c <> '')
- AND (name IS NULL OR name = '')
+WHERE did NOT IN (SELECT Reaganomics_ID__c FROM LoadedAccounts WHERE Reaganomics_ID__c <> '')
+ AND name = ''
  AND first <> ''
- AND first IS NOT NULL
 
 --pass 2 - set to company
 UPDATE SF_Account
 SET name = institution
-WHERE did NOT IN (SELECT Reaganomics_ID__c FROM Staging..LoadedAccounts WHERE Reaganomics_ID__c <> '')
- AND (name IS NULL OR name = '')
+WHERE did NOT IN (SELECT Reaganomics_ID__c FROM LoadedAccounts WHERE Reaganomics_ID__c <> '')
+ AND name = ''
  AND (institution IS NOT NULL OR institution <> '')
 
+ --anonymous
 UPDATE SF_Account
-SET name = NULL
-WHERE name = ''
+SET IndAnonymous = 1,
+	name = 'Anonymous'
+WHERE name = '' and
+	  institution =''
+
 
 --Bad emails
 UPDATE SF_Account

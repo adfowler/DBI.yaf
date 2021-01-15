@@ -68,6 +68,11 @@ INNER JOIN SF_Account c
   on a.did = c.did
 
 
+UPDATE SF_Donation
+SET DonationName = 'Anonymous - ' +  cast(gift_date as varchar(15))
+WHERE did in (select did from SF_Account where name = 'Anonymous')
+
+
 
  DELETE FROM SF_Donation
  WHERE DKEY IN (SELECT IMPORT_ID__C LOADEDDONATIONS)

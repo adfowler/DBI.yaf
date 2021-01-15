@@ -46,8 +46,7 @@ order by nid, did
 
 select *
 from Load_Notes
-where nid not in (SELECT reaganomics_note_id__C FROM LoadedTasks WHERE CreatedDate > ='2020-12-23') and
-DATALENGTH(dbo.udf_striphtml(noted) )< 32000
+where nid not in (SELECT reaganomics_note_id__C FROM LoadedTasks WHERE CreatedDate > ='2020-12-23')
 order by nid, did
 
 

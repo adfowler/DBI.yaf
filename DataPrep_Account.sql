@@ -6,12 +6,14 @@
 
 /*
 
-This script can and should be cleaned up/organized. It doesn't take long to run, but we don't need to hit tables multiple times (for exACMEle the load_attributes table).
+This script can and should be cleaned up/organized. It doesn't take long to run, but we don't need to hit tables multiple times (for example the load_attributes table).
 
 
 */
 
 USE YAF
+
+
 
 DROP TABLE IF EXISTS SF_Account
 
@@ -174,7 +176,7 @@ SELECT DISTINCT
   ISNULL(a.suffix, '') 'suffix',
   ISNULL(a.salutation, '') 'salutation',
   a.add_date,
---  a.stACME,
+--  a.stamp,
   a.cumulative,
   ISNULL(a.movemgr, '') 'movemgr',
   ISNULL(a.dateofbirth, '') 'dateofbirth',
@@ -274,7 +276,8 @@ SELECT DISTINCT
   CAST('' AS VARCHAR(20)) 'ProfessionalMailingList',
   CAST('' AS VARCHAR(20)) 'AccountType',
   CAST('' AS VARCHAR(50)) 'LegacySource',
-  CAST(0 AS BIT) 'IndAnonymous'
+  CAST(0 AS BIT) 'IndAnonymous',
+  CAST(0 AS BIT) 'IndPotentialDupe'
 INTO SF_Account
 FROM V_DonorAddress a
 LEFT OUTER JOIN booklist b
@@ -481,16 +484,16 @@ WHERE b.did IS NOT NULL AND
 --pass 1 - set to first + last name
 UPDATE SF_Account
 SET name = first + ' ' + last
-WHERE did NOT IN (SELECT Reaganomics_ID__c FROM LoadedAccounts WHERE Reaganomics_ID__c <> '')
- AND name = ''
+WHERE name = ''
  AND first <> ''
+ --AND  did NOT IN (SELECT Reaganomics_ID__c FROM LoadedAccounts WHERE Reaganomics_ID__c <> '')
 
 --pass 2 - set to company
 UPDATE SF_Account
 SET name = institution
-WHERE did NOT IN (SELECT Reaganomics_ID__c FROM LoadedAccounts WHERE Reaganomics_ID__c <> '')
- AND name = ''
+WHERE  name = ''
  AND (institution IS NOT NULL OR institution <> '')
+ --AND did NOT IN (SELECT Reaganomics_ID__c FROM LoadedAccounts WHERE Reaganomics_ID__c <> '')
 
  --anonymous
 UPDATE SF_Account
@@ -515,33 +518,141 @@ SET emailaddress = CASE emailaddress
 					WHEN 'D.DA34@&Yahoo.com' THEN 'D.DA34@Yahoo.com'
 					WHEN 'don.covert@g,mail.com' THEN 'don.covert@gmail.com'
 					WHEN 'reesae@aol..com' THEN 'reesae@aol.com'
-					ELSE ''
+					ELSE emailaddress
 				  END
 
 
 
-DELETE
+
+
+--Export to name parser for pulling spouse contacts
+SELECT  did, title, first, middle, last, suffix, BillingStreet, city, state, zip, institution
 FROM SF_Account
-WHERE did NOT IN (SELECT Reaganomics_ID__c FROM Staging..LoadedAccounts WHERE Reaganomics_ID__c <> '')
+
+/*Post Address standardization*/
+SELECT ListId, RecordNumber, ListType, Honorific, FirstName, MiddleName, LastName, Suffix, SpouseFirstName, SpouseMiddleName, CompanyName, FinalAddress1 'AddressLine1', FinalAddress2 'AddressLine2', FinalCity 'City', FinalState 'State', FinalZipcode 'ZipCode', FinalZip4 'Zip4', CarrierRoute,
+    CountyFIPS, DeliveryPoint, CMRA, ValidationFlag, DPVFootnotes, DPVIndicator, DPVVacant, StandardizationCode, LOTNumber, RecordType, MatchFlag, MoveType, MoveDate, HouseholdHash, ContactID, QualityScore, CAST('' AS CHAR(1)) 'RejectCode', ParseCode, Gender,
+    CAST(NULL AS INT) 'PriorityLevel', CAST(NULL AS VARCHAR(25)) 'DonorID', CAST(NULL AS VARCHAR(5)) 'MissionCode', CAST(NULL AS VARCHAR(3)) 'ListCode', CAST(NULL AS INTEGER) 'DbId', CAST(NULL AS INTEGER) 'SiteId', CAST(0 AS BIT) 'Keeper', CAST(NULL AS BINARY(32)) 'ContactHash', CAST(0 AS BIT) 'IndicateDMA', CAST(0 AS BIT) 'IndicateDeceased', CAST(0 AS BIT) 'IndicatePrison',  CAST('' AS VARCHAR(2)) 'HouseSegment '
+INTO #ProjectWork
+FROM YAFAccounts_20211128_Results
 
 
-select *
+
+--Update DonorIds for house records
+;WITH House as (
+		--Break out original data into it's fields. You'll have to check this query to see what rows coorespond to the fields we need.
+		SELECT	ListID, 
+				RecordNumber, 
+				[value] as String, 
+				Row_Number() Over(Partition By recordnumber order by %%physloc%% ) rn
+		FROM YAFAccounts_20211128_Results 
+		 cross apply string_split(FullOriginalRecord,',')	
+		),
+	  --Pull out the fields we need
+	  DonorInfo as (
+		SELECT Listid, 
+		       RecordNumber, 
+			   CASE WHEN rn = 2 THEN REPLACE(string,'''','') ELSE '' END 'DonorID'
+			   --CASE WHEN rn = 2 THEN REPLACE(string,'''','') ELSE '' END 'MissionCode'
+		FROM House 
+		),
+	  --clean out blanks, probably not necessary since we are just updating.
+	  DonorInfoFinal as (
+		SELECT ListId, RecordNumber, MAX(DonorID) 'DonorId'
+		FROM DonorInfo
+		GROUP BY ListID, RecordNumber
+		)
+
+UPDATE a
+SET a.DonorID = b.DonorID
+FROM #ProjectWork a INNER JOIN DonorInfoFinal b
+  on a.ListID = b.ListID and
+     a.RecordNumber = b.RecordNumber
+
+UPDATE a
+SET a.BillingStreet = RTRIM(b.AddressLine1 + ' ' + b.AddressLine2)
+FROM SF_Account a INNER JOIN #ProjectWork b
+  on a.did = b.DonorID
+WHERE b.StandardizationCode < 92
+
+select top 500*
 from SF_Account
-where emailaddress <>''
 
+
+/*Set Dupes*/
+
+drop table IF EXISTS #dupes
+
+--3334
+;with t1 as (
+  select first, last, LEFT(zip, 5) 'zip', BillingStreet, count(*) 'DupCount', MIN(akey) 'DupGroup'
+  from SF_Account
+  where name > ' ' and zip > ' ' and BillingStreet > ' '
+  group by first, last, LEFT(zip, 5), BillingStreet
+  having count(*) > 1
+)
+select distinct t1.DupGroup, a.did, a.first, a.last, a.name, a.Type, a.BillingStreet, a.city, a.state, a.zip
+into #dupes
+from SF_Account a inner join t1
+on a.first   = t1.first and
+   a.last	= t1.last and
+   LEFT(a.zip, 5)    = t1.zip    and
+   a.BillingStreet = t1.BillingStreet 
+WHERE did <> 574399 --pulled in twice because address is in altaddr twice
+ORDER BY t1.DupGroup
+
+UPDATE a
+SET a.IndPotentialDupe = 1
+FROM SF_Account a INNER JOIN #dupes b
+  on a.did = b.did
+
+--Export in waves
+exec ExportAccounts 0
+exec ExportAccounts 1
+exec ExportAccounts 2
+SELECT * FROM SF_Account WHERE Did % 5 >2
+
+
+
+/*Check what loaded*/
+	TRUNCATE TABLE LoadedAccounts
+	ALTER TABLE LoadedAccounts DROP CONSTRAINT pk_LoadedAccounts
+
+	--export file from jitterbit 
+	BULK INSERT LoadedAccounts
+	FROM 'D:\Processes\YAF\LoadedAccounts.csv'
+	WITH
+	(
+		FIRSTROW = 2, --Second row if header row in file
+		FIELDTERMINATOR = ',',  --CSV field delimiter
+		ROWTERMINATOR = '\n',   --Use to shift the control to next row
+		ERRORFILE = 'D:\Processes\YAF\LoadedAccounts',
+		TABLOCK
+	)
+
+	DELETE FROM LoadedAccounts
+	WHERE Reaganomics_ID__c = '""'
+
+ALTER TABLE LoadedAccounts
+ALTER COLUMN Reaganomics_ID__c VARCHAR(10) NOT NULL
+ALTER TABLE LoadedAccounts ADD CONSTRAINT pk_LoadedAccounts Primary Key (Reaganomics_ID__c)
+
+/*Export missed*/
 SELECT *
-FROM Parser_Post
-WHERE DBID = 399364
+FROM V_SFAccount_ToLoad
 
-SELECT *
-FROM SF_Account
-WHERE DID = 71603
+UPDATE V_SFAccount_ToLoad
+SET emailaddress = ''
 
-SELECT b.DbId, b.FullName, b.FirstName, b.MiddleName, b.LastName, a.name, a.first, a.middle, a.last
-from V_DonorAddress a inner join Parser_Post b
-  on a.did = b.DbId
-where a.did = 399364
+select count(*) from loadedaccounts
+select count(*) from sf_account
+
+
+
 ---------------------------------------------------------------
+
+
+
 
 
   select top 500*

@@ -1,3 +1,34 @@
+SELECT *, 
+	HASHBYTES('SHA2_256',
+		ISNULL(UPPER(Salutation), '') +
+		ISNULL(UPPER(FirstName), '') +
+		ISNULL(UPPER(MiddleName), '') +
+		ISNULL(UPPER(LastName), '') +
+		ISNULL(UPPER(Suffix), '') +
+		ISNULL(UPPER(relation), '') +
+		ISNULL(UPPER(Salutation), '') +
+		ISNULL(CAST(birthday AS VARCHAR(10)), '') +
+		ISNULL(CAST(dateofdeath AS VARCHAR(10)), '') +
+		ISNULL(UPPER(IndDeceased), '') +
+		ISNULL(UPPER(EmailAddress), '') +
+		ISNULL(UPPER(cphone), '') +
+		ISNULL(UPPER(alma_mater), '') +
+		ISNULL(UPPER(EmailAddress), '') +
+		ISNULL(CAST(grad_date AS VARCHAR(10)), '') +
+		ISNULL(UPPER(BoardOfGovernrs), '') +
+		ISNULL(UPPER(RRCDocent), '') +
+		ISNULL(UPPER(BoardOfDirectors), '') +
+		ISNULL(UPPER(Parents), '') +
+		ISNULL(UPPER(Anniversary), '') +
+		ISNULL(UPPER(Veteran), '') 
+		) 'HashKey',
+	CAST(GETDATE() AS DATE) 'ArchiveDate'
+INTO Archive_SFContact
+FROM SF_Contact
+
+CREATE INDEX idx_Archive_SFContact ON Archive_SFContact(did)
+CREATE INDEX idx_HashKey ON Archive_SFContact(HashKey)
+
 DROP TABLE IF EXISTS SF_Contact
 
 --Primary
@@ -24,12 +55,12 @@ select 	--ckey 'ReaganomicsContactID',
 		CAST(NULL AS DATE) 'Anniversary',
 		CAST(NULL AS VARCHAR(50)) 'Veteran'
 into SF_Contact
-from V_DonorAddress a inner join Parser_Post b
+from V_DonorAddress a inner join Parser_Post b --ParserPost is from NameCruncher
   on a.did = b.DbId
 where did in (select did from SF_Account) and
       a.defaultaddr = 1
 
-	    CREATE INDEX idx_SF_Contact ON SF_Contact(did)
+CREATE INDEX idx_SF_Contact ON SF_Contact(did)
 
 --spouses
 INSERT INTO SF_Contact 
@@ -109,16 +140,6 @@ CREATE INDEX idx_SF_Contact_ReaganomicsContactID on SF_Contact (ReaganomicsConta
 --CREATE INDEX idx_LoadedAccounts_ReaganomicsContactID on Staging..LoadedContacts (Reaganomics_Contact_ID__c)
 
 
-ALTER VIEW V_SFContact_Export as 
-SELECT *
-FROM SF_Contact
-WHERE ReaganomicsContactID NOT IN (SELECT Reaganomics_Contact_ID__c FROM Staging..LoadedContacts)
-ORDER BY did
-
-DELETE FROM SF_Contact
-WHERE DID NOT IN (SELECT DID FROM V_SFContact_Export)
-
-
 --Blank last names
 ALTER TABLE SF_Contact
 ALTER COLUMN LastName varchar(100)
@@ -129,6 +150,7 @@ FROM SF_Contact a INNER JOIN V_DonorAddress b
   on a.did = b.did
 WHERE (a.LastName = '' or a.LastName is null)
 and a.ReaganomicsContactID LIKE 'P%'
+
 
 
 --Bad emails
@@ -143,28 +165,64 @@ WHERE emailaddress not like '%@%.%' or
 UPDATE SF_Contact
 SET EmailAddress = REPLACE(EmailAddress, ' ' ,'')
 
---After it keeps failing
-UPDATE SF_Contact
-SET EmailAddress = ''
-
-
-SELECT *
-FROM SF_Contact
-where LastName = ''
-
-select *
-from Load_Donor
-where did = 362345
 
 UPDATE SF_Contact
 SET LastName = 'Hunter'
 WHERE did = 362345
 
-select *
-from SF_Contact
-where did = 435710
+ALTER TABLE SF_Contact
+ADD HashKey varbinary(8000)
 
+UPDATE SF_Contact
+SET HashKey = HASHBYTES('SHA2_256',
+		ISNULL(UPPER(Salutation), '') +
+		ISNULL(UPPER(FirstName), '') +
+		ISNULL(UPPER(MiddleName), '') +
+		ISNULL(UPPER(LastName), '') +
+		ISNULL(UPPER(Suffix), '') +
+		ISNULL(UPPER(relation), '') +
+		ISNULL(UPPER(Salutation), '') +
+		ISNULL(CAST(birthday AS VARCHAR(10)), '') +
+		ISNULL(CAST(dateofdeath AS VARCHAR(10)), '') +
+		ISNULL(UPPER(IndDeceased), '') +
+		ISNULL(UPPER(EmailAddress), '') +
+		ISNULL(UPPER(cphone), '') +
+		ISNULL(UPPER(alma_mater), '') +
+		ISNULL(UPPER(EmailAddress), '') +
+		ISNULL(CAST(grad_date AS VARCHAR(10)), '') +
+		ISNULL(UPPER(BoardOfGovernrs), '') +
+		ISNULL(UPPER(RRCDocent), '') +
+		ISNULL(UPPER(BoardOfDirectors), '') +
+		ISNULL(UPPER(Parents), '') +
+		ISNULL(UPPER(Anniversary), '') +
+		ISNULL(UPPER(Veteran), '') 
+		)
+CREATE INDEX idx_HashKey ON SF_Contact(HashKey)
 
-select *
-from V_DonorAddress
-where did = 435710
+--New/Updated records
+SELECT *
+FROM SF_Contact
+WHERE HashKey NOT IN (SELECT HashKey FROM Archive_SFContact)
+
+select * from SF_Contact where did = 245057
+select * from Archive_SFContact where did = 245057
+ 
+--See what contacts didn't make it
+SELECT *
+FROM SF_Contact
+WHERE ReaganomicsContactID NOT IN (SELECT Reaganomics_Contact_ID__c FROM LoadedContacts WHERE SystemModstamp > '2021-09-21')
+
+--Everything with an email address that didn't make it in the first load failed becuase of bad formattting, set to blank
+UPDATE SF_Contact
+SET EmailAddress = ''
+WHERE ReaganomicsContactID NOT IN (SELECT Reaganomics_Contact_ID__c FROM LoadedContacts WHERE SystemModstamp > '2021-09-21')
+  AND EmailAddress <> ''
+
+--Last Names not making it in. Set to anonymous?
+UPDATE SF_Contact
+SET LastName = 'Anonymous'
+WHERE ReaganomicsContactID NOT IN (SELECT Reaganomics_Contact_ID__c FROM LoadedContacts WHERE SystemModstamp > '2021-09-21')
+  AND (LastName IS NULL OR LastName = '')
+
+--truncate table loadedaccounts
+

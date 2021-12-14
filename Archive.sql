@@ -153,13 +153,11 @@ INSERT INTO Archive_MailAttribute
 SELECT *, CAST(GETDATE() AS DATE) 'ArchiveDate'
 FROM Load_MailAttribute
 
---Notes
-INSERT INTO Archive_Notes
+--Notes 
+INSERT INTO Archive_Notes (Nid, Did, Dated, Uid, Noted, Timein, ArchiveDate)
 SELECT *, CAST(GETDATE() AS DATE) 'ArchiveDate'
 FROM Load_Notes
 
-ALTER TABLE Archive_Notes
-ADD HashKey binary(32)
 
 UPDATE Archive_Notes
 SET HashKey = HASHBYTES('SHA2_256',

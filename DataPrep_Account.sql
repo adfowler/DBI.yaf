@@ -15,7 +15,8 @@ USE YAF
 
 
 
-DROP TABLE IF EXISTS SF_Account
+TRUNCATE TABLE upd_Account
+DROP INDEX IF EXISTS   upd_Account.idx_upd_Account
 
 ;WITH 
 at1 AS (
@@ -165,7 +166,7 @@ SELECT did, STRING_AGG(Description, ';') WITHIN GROUP (ORDER BY Description asc)
 FROM AccountSource
 GROUP BY did
 )
-
+INSERT INTO upd_Account
 SELECT DISTINCT 
   a.did,
   ISNULL(a.title, '') 'title',
@@ -277,8 +278,8 @@ SELECT DISTINCT
   CAST('' AS VARCHAR(20)) 'AccountType',
   CAST('' AS VARCHAR(50)) 'LegacySource',
   CAST(0 AS BIT) 'IndAnonymous',
-  CAST(0 AS BIT) 'IndPotentialDupe'
-INTO SF_Account
+  CAST(0 AS BIT) 'IndPotentialDupe',
+  NULL	'HashKey'
 FROM V_DonorAddress a
 LEFT OUTER JOIN booklist b
   ON a.did = b.did
@@ -306,11 +307,10 @@ LEFT OUTER JOIN AccountSourceList m
   ON a.did = m.did
 LEFT OUTER JOIN attributelist n
   ON a.did = n.did
-WHERE a.defaultaddr = 1 --AND A.did IN (SELECT Reaganomics_ID__c FROM Staging..LoadedAccounts WHERE Reaganomics_ID__c <> '')
---and a.did not in (select did from staging..YAF_LoadedAccounts)
-  --and a.did in (select reaganomics_id__c from staging..loadedaccounts where Reaganomics_ID__c > '')
+WHERE a.defaultaddr = 1 
 
-  CREATE INDEX idx_SF_Account ON SF_Account(did)
+CREATE INDEX idx_upd_Account ON upd_Account(did)
+
 /*Update Mail Preferences*/
 --Some of these that match on longer strings can be combinied into 1 update statement. The BRE and YEARLY matches should still be kept separately since they are smaller common strings that could lead to mis mappings.
 --SolicitationSchedule
@@ -320,14 +320,14 @@ SET a.SolicitationSchedule = CASE m.uniquekey
 								WHEN 'END OF YEAR' THEN 'End of Year Only'
 								WHEN 'Annual Appeal Only' THEN 'Annual Appeal Only'
 							  END
-FROM SF_Account a INNER JOIN Load_Mail m
+FROM upd_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 WHERE uniquekey IN ('ANNUAL APPEAL ONLY', 'MAJOR APPEALS', 'END OF YEAR')
 
 --CommunicationFrequency
 UPDATE a
 SET a.CommunicationFrequency = m.uniquekey
-FROM SF_Account a INNER JOIN Load_Mail m
+FROM upd_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 WHERE uniquekey IN ('YEARLY', 'TWICE', 'QUARTERLY')
 
@@ -339,14 +339,14 @@ SET a.ProspectList = CASE m.uniquekey
 						WHEN 'PROSPECT LIST C' THEN 'C: $100+'
 						WHEN 'PROSPECT LIST D' THEN 'D: Internal Mailings'
 					 END
-FROM SF_Account a INNER JOIN Load_Mail m
+FROM upd_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 
 
 --BusinessReplyEnvolopeRequired
 UPDATE a
 SET a.BusinessReplyEnvolopeRequired = 1
-FROM SF_Account a INNER JOIN Load_Mail m
+FROM upd_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 WHERE uniquekey = 'BRE'
 
@@ -357,13 +357,13 @@ SET a.ThankYouLetterPreference = CASE m.uniquekey
 									WHEN 'NO THANK YOU LTR' THEN 'No Thank You Letters'
 									--WHEN 'END OF YEAR' THEN 'Send EOY Statement Only'
 								 END
-FROM SF_Account a INNER JOIN Load_Mail m
+FROM upd_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 WHERE uniquekey IN ('E-MAIL THANK YOU', 'NO THANK YOU LTR')
 
 UPDATE a
 SET a.ThankYouLetterPreference = 'Send EOY Statement Only'
-FROM SF_Account a INNER JOIN Load_Attributes la
+FROM upd_Account a INNER JOIN Load_Attributes la
   on a.did = la.did
 WHERE la.uniquekey = 'YEARLY STATEMENT'
 
@@ -373,7 +373,7 @@ SET a.StudentThankyou = CASE m.uniquekey
 							WHEN 'NOSTUDENTTY' THEN 'Do Not Send'
 							WHEN 'STUDENT TY' THEN 'Send'
 						END
-FROM SF_Account a INNER JOIN Load_Mail m
+FROM upd_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 WHERE uniquekey IN ('NOSTUDENTTY', 'STUDENT TY')
 
@@ -383,7 +383,7 @@ SET a.NJCPreference = CASE m.uniquekey
 						WHEN 'NO NJC' THEN 'Do Not Send any NJC'
 						WHEN 'NJC ONLY' THEN 'Send only NJC'
 					  END
-FROM SF_Account a INNER JOIN Load_Mail m
+FROM upd_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 WHERE uniquekey IN ('NO NJC', 'NJC ONLY')
 
@@ -393,7 +393,7 @@ SET a.RanchPreference = CASE m.uniquekey
 						WHEN 'RANCH NO' THEN 'Do Not Send any Ranch Materials'
 						WHEN 'RANCH ONLY' THEN 'Send only Ranch Materials'
 					  END
-FROM SF_Account a INNER JOIN Load_Mail m
+FROM upd_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 WHERE uniquekey IN ('RANCH NO', 'RANCH ONLY')
 
@@ -404,7 +404,7 @@ SET a.InvitationPreference = CASE m.uniquekey
 						WHEN 'INVITATIONS' THEN 'Send All Invitations'
 						WHEN 'CONTINUE INVITATIONS' THEN 'Send All Invitations, even if Date Expired'
 					  END
-FROM SF_Account a INNER JOIN Load_Mail m
+FROM upd_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 WHERE uniquekey IN ('CONTINUE INVITATIONS', 'INVITATIONS', 'NO INVITATIONS')
 
@@ -414,7 +414,7 @@ SET a.CruisePreference = CASE m.uniquekey
 						WHEN 'CRUISE FUTURE' THEN 'Interested in Future Cruise'
 						WHEN 'CRUISE NO' THEN 'Don''t Cruise'
 					  END
-FROM SF_Account a INNER JOIN Load_Mail m
+FROM upd_Account a INNER JOIN Load_Mail m
   on a.did = m.did
 WHERE uniquekey IN ('CRUISE FUTURE', 'CRUISE NO')
 
@@ -422,7 +422,7 @@ WHERE uniquekey IN ('CRUISE FUTURE', 'CRUISE NO')
 
 /*Attributes*/
 --This is cleaner than the way we hit the Load_Mail table over and over above, however we have to be careful with similar strings while using LIKE. Ex. LegacySocietyStatus matches on both LEGACY and LEGACY CLUB.
-UPDATE SF_Account
+UPDATE upd_Account
 SET MikeReganTY = CASE WHEN AttributeList LIKE '%MIKE REAGAN T.Y.%' THEN 1 ELSE 0 END,
 	DonorClubLevel =  CASE WHEN AttributeList LIKE '%RAWHIDE CIRCLE%' THEN 'Rawhide Circle' ELSE '' END,
 	SpecialDonor = CASE WHEN AttributeList LIKE '%SPECIAL DONOR%' THEN 'True' ELSE SpecialDonor END,
@@ -450,7 +450,7 @@ SET MikeReganTY = CASE WHEN AttributeList LIKE '%MIKE REAGAN T.Y.%' THEN 1 ELSE 
 						  END
 
 --Deceased legacies
-UPDATE SF_Account
+UPDATE upd_Account
 SET LegacySocietyStatus = 'LD = Deceased Legacy Society Member'
 WHERE AttributeList LIKE '%DECEASED%'
   AND LegacySocietyStatus IS NOT NULL
@@ -458,7 +458,7 @@ WHERE AttributeList LIKE '%DECEASED%'
 --LegacySource
 UPDATE a
 SET a.LegacySource = la.description
-FROM SF_Account a INNER JOIN Load_Attributes la
+FROM upd_Account a INNER JOIN Load_Attributes la
   on a.did = la.did
 WHERE la.uniquekey = 'LEGACY'
 
@@ -466,13 +466,13 @@ WHERE la.uniquekey = 'LEGACY'
 --DeletedDate
 UPDATE a
 SET DeletedDate = dated
-FROM SF_Account a INNER JOIN Load_Attributes la
+FROM upd_Account a INNER JOIN Load_Attributes la
   on a.did = la.did
 WHERE la.uniquekey IN ('DELETED DATE', 'DELETED', 'DECEASED') 
 
 UPDATE a
 SET DeletedDate = b.dateofdeath
-FROM SF_Account a INNER JOIN V_DonorAddress b
+FROM upd_Account a INNER JOIN V_DonorAddress b
   on a.did = b.did
 WHERE b.did IS NOT NULL AND
       a.DeletedDate IS NULL AND
@@ -482,29 +482,27 @@ WHERE b.did IS NOT NULL AND
 /*Clean up*/
 --blank names
 --pass 1 - set to first + last name
-UPDATE SF_Account
+UPDATE upd_Account
 SET name = first + ' ' + last
 WHERE name = ''
  AND first <> ''
- --AND  did NOT IN (SELECT Reaganomics_ID__c FROM LoadedAccounts WHERE Reaganomics_ID__c <> '')
 
 --pass 2 - set to company
-UPDATE SF_Account
+UPDATE upd_Account
 SET name = institution
 WHERE  name = ''
  AND (institution IS NOT NULL OR institution <> '')
- --AND did NOT IN (SELECT Reaganomics_ID__c FROM LoadedAccounts WHERE Reaganomics_ID__c <> '')
 
  --anonymous
-UPDATE SF_Account
+UPDATE upd_Account
 SET IndAnonymous = 1,
 	name = 'Anonymous'
 WHERE name = '' and
 	  institution =''
-
-
+	  
 --Bad emails
-UPDATE SF_Account
+--Might need to expand bad email recognition for automation.
+UPDATE upd_Account
 SET emailaddress = ''
 WHERE emailaddress not like '%@%.%' or
 	  emailaddress like '%@%@%'
@@ -512,7 +510,7 @@ WHERE emailaddress not like '%@%.%' or
       
 /*1 off emails*/
 --after everything else and it is still being returned as a bad email
-UPDATE SF_Account
+UPDATE upd_Account
 SET emailaddress = CASE emailaddress
 					WHEN 'helenMaryWarren@massmail.state.ma.' THEN 'helenMaryWarren@massmail.state.ma'
 					WHEN 'D.DA34@&Yahoo.com' THEN 'D.DA34@Yahoo.com'
@@ -520,21 +518,178 @@ SET emailaddress = CASE emailaddress
 					WHEN 'reesae@aol..com' THEN 'reesae@aol.com'
 					ELSE emailaddress
 				  END
+/*Set Dupes*/
+
+DROP TABLE IF EXISTS #dupes
+
+--3334
+;with t1 as (
+  SELECT first, last, LEFT(zip, 5) 'zip', BillingStreet, count(*) 'DupCount', MIN(akey) 'DupGroup'
+  FROM upd_Account
+  WHERE name > ' ' and zip > ' ' and BillingStreet > ' '
+  GROUP BY first, last, LEFT(zip, 5), BillingStreet
+  HAVING COUNT(*) > 1
+)
+SELECT DISTINCT t1.DupGroup, a.did, a.first, a.last, a.name, a.Type, a.BillingStreet, a.city, a.state, a.zip
+INTO #dupes
+FROM upd_Account a inner join t1
+on a.first   = t1.first and
+   a.last	= t1.last and
+   LEFT(a.zip, 5)    = t1.zip    and
+   a.BillingStreet = t1.BillingStreet 
+WHERE did <> 574399 --pulled in twice because address is in altaddr twice
+ORDER BY t1.DupGroup
+
+UPDATE a
+SET a.IndPotentialDupe = 1
+FROM upd_Account a INNER JOIN #dupes b
+  on a.did = b.did
+
+/*Set HashKey*/
+--This sets the hash based on all fields that are pushed to salesforce. If any of these fields change, it will change the hash and trigger an update to salesforce.
+UPDATE upd_Account
+SET HashKey = HASHBYTES('MD5', (SELECT title, name, first, last, suffix, salutation, add_date, cumulative, movemgr, emailaddress, spousedod, movemgr2, type, BillingStreet, city, state, zip, institution, phone, longitude, latitude, country, Status, BookList, EventList, MailList, PersonalList, PremiumList, RecognitionList, SolicitationSchedule, CommunicationFrequency, StopMail, ProspectList, DoNotExchange, NoSolicitations, NoMail, BusinessReplyEnvolopeRequired, NoAgencyMailings, ShortLetter, NoPhoneCalls, ThankYouLetterPreference, StudentThankYou, NJCPreference, NoMassEmails, RanchPreference, InvitationPreference, CruisePreference, LegacySocietyStatus, Gifts2012, Gifts2013, Gifts2014, Gifts2015, Gifts2016, Gifts2017, Gifts2018, PhoneList, SpeakerList, SpeakerDislikeList, AccountSourceList, AttributeList, GivingCapacity, DeletedReason, DeletedDate, MikeReganTY, DonorClubLevel, SpecialDonor, ProfessionalMailingList, AccountType, LegacySource, IndAnonymous, IndPotentialDupe FROM (VALUES(null))foo(bar) FOR XML AUTO)) 
+
+/*Determine updates/adds*/
+DECLARE @updates int,
+		@adds int,
+		@table char(7) = 'Account',
+		@updatedate smalldatetime = CAST(getdate() AS DATE)
+
+SET @updates = (SELECT COUNT(DISTINCT(u.did)) 
+			   FROM upd_Account u INNER JOIN mst_Account m
+				on u.did = m.did
+			   WHERE u.HashKey <> m.HashKey)
+
+SET @adds = (SELECT COUNT(DISTINCT(did))
+			 FROM upd_Account
+			 WHERE did not in (SELECT did FROM mst_Account)
+			)
+
+INSERT INTO UpdateLog(TableName, UpdateDate, Updates, Adds, Deletes)
+SELECT @table, @updatedate, @updates, @adds, 0
+
+/*Archive updates*/
+INSERT INTO Archive_Account
+SELECT m.*, CAST(GETDATE() AS DATE) 'ArchiveDate'
+FROM mst_Account m INNER JOIN upd_Account u
+  on m.did = u.did
+WHERE m.HashKey <> u.HashKey
+
+/*Delete unchanged records*/
+DELETE u
+FROM upd_Account u INNER JOIN mst_Account m
+ on u.did = m.did
+WHERE u.HashKey = m.HashKey
+
+/*Merge with master*/
+MERGE mst_Account m
+USING upd_Account u
+	ON m.did = u.did
+WHEN MATCHED THEN
+	UPDATE
+	SET m.title	=	u.title,
+		m.name	=	u.name,
+		m.first	=	u.first,
+		m.middle	=	u.middle,
+		m.last	=	u.last,
+		m.suffix	=	u.suffix,
+		m.salutation	=	u.salutation,
+		m.add_date	=	u.add_date,
+		m.cumulative	=	u.cumulative,
+		m.movemgr	=	u.movemgr,
+		m.dateofbirth	=	u.dateofbirth,
+		m.dateofdeath	=	u.dateofdeath,
+		m.ModifiedUserId	=	u.ModifiedUserId,
+		m.emailaddress	=	u.emailaddress,
+		m.frozen	=	u.frozen,
+		m.spousedod	=	u.spousedod,
+		m.movemgr2	=	u.movemgr2,
+		m.akey	=	u.akey,
+		m.Type	=	u.Type,
+		m.BillingStreet	=	u.BillingStreet,
+		m.city	=	u.city,
+		m.state	=	u.state,
+		m.zip	=	u.zip,
+		m.alt_from	=	u.alt_from,
+		m.alt_to	=	u.alt_to,
+		m.institution	=	u.institution,
+		m.phone	=	u.phone,
+		m.defaultaddr	=	u.defaultaddr,
+		m.longitude	=	u.longitude,
+		m.latitude	=	u.latitude,
+		m.country	=	u.country,
+		m.vanity	=	u.vanity,
+		m.Status	=	u.Status,
+		m.BookList	=	u.BookList,
+		m.EventList	=	u.EventList,
+		m.MailList	=	u.MailList,
+		m.PersonalList	=	u.PersonalList,
+		m.PremiumList	=	u.PremiumList,
+		m.RecognitionList	=	u.RecognitionList,
+		m.SolicitationSchedule	=	u.SolicitationSchedule,
+		m.CommunicationFrequency	=	u.CommunicationFrequency,
+		m.StopMail	=	u.StopMail,
+		m.ProspectList	=	u.ProspectList,
+		m.DoNotExchange	=	u.DoNotExchange,
+		m.NoSolicitations	=	u.NoSolicitations,
+		m.NoMail	=	u.NoMail,
+		m.BusinessReplyEnvolopeRequired	=	u.BusinessReplyEnvolopeRequired,
+		m.NoAgencyMailings	=	u.NoAgencyMailings,
+		m.ShortLetter	=	u.ShortLetter,
+		m.NoPhoneCalls	=	u.NoPhoneCalls,
+		m.ThankYouLetterPreference	=	u.ThankYouLetterPreference,
+		m.StudentThankYou	=	u.StudentThankYou,
+		m.NJCPreference	=	u.NJCPreference,
+		m.NoMassEmails	=	u.NoMassEmails,
+		m.RanchPreference	=	u.RanchPreference,
+		m.InvitationPreference	=	u.InvitationPreference,
+		m.CruisePreference	=	u.CruisePreference,
+		m.LegacySocietyStatus	=	u.LegacySocietyStatus,
+		m.Gifts2012	=	u.Gifts2012,
+		m.Gifts2013	=	u.Gifts2013,
+		m.Gifts2014	=	u.Gifts2014,
+		m.Gifts2015	=	u.Gifts2015,
+		m.Gifts2016	=	u.Gifts2016,
+		m.Gifts2017	=	u.Gifts2017,
+		m.Gifts2018	=	u.Gifts2018,
+		m.PhoneList	=	u.PhoneList,
+		m.SpeakerList	=	u.SpeakerList,
+		m.SpeakerDislikeList	=	u.SpeakerDislikeList,
+		m.AccountSourceList	=	u.AccountSourceList,
+		m.AttributeList	=	u.AttributeList,
+		m.GivingCapacity	=	u.GivingCapacity,
+		m.DeletedReason	=	u.DeletedReason,
+		m.DeletedDate	=	u.DeletedDate,
+		m.MikeReganTY	=	u.MikeReganTY,
+		m.DonorClubLevel	=	u.DonorClubLevel,
+		m.SpecialDonor	=	u.SpecialDonor,
+		m.ProfessionalMailingList	=	u.ProfessionalMailingList,
+		m.AccountType	=	u.AccountType,
+		m.LegacySource	=	u.LegacySource,
+		m.IndAnonymous	=	u.IndAnonymous,
+		m.IndPotentialDupe	=	u.IndPotentialDupe,
+		m.HashKey	=	u.HashKey
+WHEN NOT MATCHED THEN
+	INSERT (did, title, name, first, middle, last, suffix, salutation, add_date, cumulative, movemgr, dateofbirth, dateofdeath, ModifiedUserId, emailaddress, frozen, spousedod, movemgr2, akey, Type, BillingStreet, city, state, zip, alt_from, alt_to, institution, phone, defaultaddr, longitude, latitude, country, vanity, Status, BookList, EventList, MailList, PersonalList, PremiumList, RecognitionList, SolicitationSchedule, CommunicationFrequency, StopMail, ProspectList, DoNotExchange, NoSolicitations, NoMail, BusinessReplyEnvolopeRequired, NoAgencyMailings, ShortLetter, NoPhoneCalls, ThankYouLetterPreference, StudentThankYou, NJCPreference, NoMassEmails, RanchPreference, InvitationPreference, CruisePreference, LegacySocietyStatus, Gifts2012, Gifts2013, Gifts2014, Gifts2015, Gifts2016, Gifts2017, Gifts2018, PhoneList, SpeakerList, SpeakerDislikeList, AccountSourceList, AttributeList, GivingCapacity, DeletedReason, DeletedDate, MikeReganTY, DonorClubLevel, SpecialDonor, ProfessionalMailingList, AccountType, LegacySource, IndAnonymous, IndPotentialDupe, HashKey)
+	VALUES (did, title, name, first, middle, last, suffix, salutation, add_date, cumulative, movemgr, dateofbirth, dateofdeath, ModifiedUserId, emailaddress, frozen, spousedod, movemgr2, akey, Type, BillingStreet, city, state, zip, alt_from, alt_to, institution, phone, defaultaddr, longitude, latitude, country, vanity, Status, BookList, EventList, MailList, PersonalList, PremiumList, RecognitionList, SolicitationSchedule, CommunicationFrequency, StopMail, ProspectList, DoNotExchange, NoSolicitations, NoMail, BusinessReplyEnvolopeRequired, NoAgencyMailings, ShortLetter, NoPhoneCalls, ThankYouLetterPreference, StudentThankYou, NJCPreference, NoMassEmails, RanchPreference, InvitationPreference, CruisePreference, LegacySocietyStatus, Gifts2012, Gifts2013, Gifts2014, Gifts2015, Gifts2016, Gifts2017, Gifts2018, PhoneList, SpeakerList, SpeakerDislikeList, AccountSourceList, AttributeList, GivingCapacity, DeletedReason, DeletedDate, MikeReganTY, DonorClubLevel, SpecialDonor, ProfessionalMailingList, AccountType, LegacySource, IndAnonymous, IndPotentialDupe, HashKey);
 
 
 
 
 
+/*
+This was a one off pull of addresses for standardization
 --Export to name parser for pulling spouse contacts
 SELECT  did, title, first, middle, last, suffix, BillingStreet, city, state, zip, institution
-FROM SF_Account
+FROM upd_Account
 
 /*Post Address standardization*/
 SELECT ListId, RecordNumber, ListType, Honorific, FirstName, MiddleName, LastName, Suffix, SpouseFirstName, SpouseMiddleName, CompanyName, FinalAddress1 'AddressLine1', FinalAddress2 'AddressLine2', FinalCity 'City', FinalState 'State', FinalZipcode 'ZipCode', FinalZip4 'Zip4', CarrierRoute,
     CountyFIPS, DeliveryPoint, CMRA, ValidationFlag, DPVFootnotes, DPVIndicator, DPVVacant, StandardizationCode, LOTNumber, RecordType, MatchFlag, MoveType, MoveDate, HouseholdHash, ContactID, QualityScore, CAST('' AS CHAR(1)) 'RejectCode', ParseCode, Gender,
     CAST(NULL AS INT) 'PriorityLevel', CAST(NULL AS VARCHAR(25)) 'DonorID', CAST(NULL AS VARCHAR(5)) 'MissionCode', CAST(NULL AS VARCHAR(3)) 'ListCode', CAST(NULL AS INTEGER) 'DbId', CAST(NULL AS INTEGER) 'SiteId', CAST(0 AS BIT) 'Keeper', CAST(NULL AS BINARY(32)) 'ContactHash', CAST(0 AS BIT) 'IndicateDMA', CAST(0 AS BIT) 'IndicateDeceased', CAST(0 AS BIT) 'IndicatePrison',  CAST('' AS VARCHAR(2)) 'HouseSegment '
 INTO #ProjectWork
-FROM YAFAccounts_20211128_Results
+FROM YAFAccounts_Results
 
 
 
@@ -545,7 +700,7 @@ FROM YAFAccounts_20211128_Results
 				RecordNumber, 
 				[value] as String, 
 				Row_Number() Over(Partition By recordnumber order by %%physloc%% ) rn
-		FROM YAFAccounts_20211128_Results 
+		FROM YAFAccounts_Results 
 		 cross apply string_split(FullOriginalRecord,',')	
 		),
 	  --Pull out the fields we need
@@ -571,46 +726,16 @@ FROM #ProjectWork a INNER JOIN DonorInfoFinal b
 
 UPDATE a
 SET a.BillingStreet = RTRIM(b.AddressLine1 + ' ' + b.AddressLine2)
-FROM SF_Account a INNER JOIN #ProjectWork b
+FROM upd_Account a INNER JOIN #ProjectWork b
   on a.did = b.DonorID
 WHERE b.StandardizationCode < 92
 
-select top 500*
-from SF_Account
+*/
 
 
-/*Set Dupes*/
 
-drop table IF EXISTS #dupes
 
---3334
-;with t1 as (
-  select first, last, LEFT(zip, 5) 'zip', BillingStreet, count(*) 'DupCount', MIN(akey) 'DupGroup'
-  from SF_Account
-  where name > ' ' and zip > ' ' and BillingStreet > ' '
-  group by first, last, LEFT(zip, 5), BillingStreet
-  having count(*) > 1
-)
-select distinct t1.DupGroup, a.did, a.first, a.last, a.name, a.Type, a.BillingStreet, a.city, a.state, a.zip
-into #dupes
-from SF_Account a inner join t1
-on a.first   = t1.first and
-   a.last	= t1.last and
-   LEFT(a.zip, 5)    = t1.zip    and
-   a.BillingStreet = t1.BillingStreet 
-WHERE did <> 574399 --pulled in twice because address is in altaddr twice
-ORDER BY t1.DupGroup
-
-UPDATE a
-SET a.IndPotentialDupe = 1
-FROM SF_Account a INNER JOIN #dupes b
-  on a.did = b.did
-
---Export in waves
-exec ExportAccounts 0
-exec ExportAccounts 1
-exec ExportAccounts 2
-SELECT * FROM SF_Account WHERE Did % 5 >2
+  /*
 
 
 
@@ -643,47 +768,4 @@ FROM V_SFAccount_ToLoad
 
 UPDATE V_SFAccount_ToLoad
 SET emailaddress = ''
-
-select count(*) from loadedaccounts
-select count(*) from sf_account
-
-
-
----------------------------------------------------------------
-
-
-
-
-
-  select top 500*
-  from SF_Account
-  where AttributeList like '%LEGACY CLUB%'
-
-  select *
-  from SF_Account
-  where MailList like '%PROSPECT LIST b%'
-
-  SELECT *
-  FROM SF_Account
-  WHERE DeletedReason = '' AND DeletedDate IS NOT NULL
-
-  select *
-  from Load_Attributes
-  where uniquekey like 'speaker%'
-
-
-  SELECT *
-  FROM Load_Attributes
-  WHERE uniquekey = 'WEALTHENGINE300-499K'
-
-  SELECT *
-  FROM Load_Donor
-  where did = 185656
-
-  select *
-  from Load_AltAddr
-  where did = 185656
-
-  select *
-  from V_DonorAddress
-  where did = 185656
+*/

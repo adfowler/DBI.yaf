@@ -117,7 +117,7 @@ ORDER BY did
 
 UPDATE a
 SET a.PotentialDupe = 1
-FROM upd_Donation a INNER JOIN DonationDupes b
+FROM upd_Donation a INNER JOIN #DonationDupes b
   on a.dkey = b.dkey
 
 UPDATE upd_Donation

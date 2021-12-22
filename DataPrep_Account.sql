@@ -1,8 +1,12 @@
-/******************************************************************************************************************************************/
-/* This script rolls data to the SF Account level. It joins Donors to AltAddr, then rolls up Books, Events, Mail, Pekrsonal, Premiums,    */
-/* and Recognition into delimited string fields. Only default addresses are included.                                                     */
-/******************************************************************************************************************************************/
-
+/******************************************************************************************************/
+/* DataPrep_Account														  */
+/* Author: Andrew Fowler - December, 2021															  */
+/*																									  */
+/* OVERVIEW																							  */
+/*  This script rolls data to the SF Account level. It joins Donors to AltAddr, then rolls up Books,  */
+/*  Events, Mail, Pekrsonal, Premiums, and Recognition into delimited string fields.				  */
+/*  Only default addresses are included.															  */
+/******************************************************************************************************/
 
 /*
 
@@ -10,13 +14,20 @@ This script can and should be cleaned up/organized. It doesn't take long to run,
 
 
 */
-
+DECLARE @err_no int,
+              @err_severity int,
+              @err_state int,
+              @err_line int,
+              @err_message varchar(4000),
+              @newline char(1)
+ 
+BEGIN TRY
 USE YAF
 
 
 
 TRUNCATE TABLE upd_Account
-DROP INDEX IF EXISTS   upd_Account.idx_upd_Account
+DROP INDEX IF EXISTS upd_Account.idx_upd_Account_did_Hash
 
 ;WITH 
 at1 AS (
@@ -309,7 +320,7 @@ LEFT OUTER JOIN attributelist n
   ON a.did = n.did
 WHERE a.defaultaddr = 1 
 
-CREATE INDEX idx_upd_Account ON upd_Account(did)
+CREATE INDEX idx_upd_Account_did_Hash ON upd_Account(did, HashKey)
 
 /*Update Mail Preferences*/
 --Some of these that match on longer strings can be combinied into 1 update statement. The BRE and YEARLY matches should still be kept separately since they are smaller common strings that could lead to mis mappings.
@@ -674,7 +685,22 @@ WHEN NOT MATCHED THEN
 	INSERT (did, title, name, first, middle, last, suffix, salutation, add_date, cumulative, movemgr, dateofbirth, dateofdeath, ModifiedUserId, emailaddress, frozen, spousedod, movemgr2, akey, Type, BillingStreet, city, state, zip, alt_from, alt_to, institution, phone, defaultaddr, longitude, latitude, country, vanity, Status, BookList, EventList, MailList, PersonalList, PremiumList, RecognitionList, SolicitationSchedule, CommunicationFrequency, StopMail, ProspectList, DoNotExchange, NoSolicitations, NoMail, BusinessReplyEnvolopeRequired, NoAgencyMailings, ShortLetter, NoPhoneCalls, ThankYouLetterPreference, StudentThankYou, NJCPreference, NoMassEmails, RanchPreference, InvitationPreference, CruisePreference, LegacySocietyStatus, Gifts2012, Gifts2013, Gifts2014, Gifts2015, Gifts2016, Gifts2017, Gifts2018, PhoneList, SpeakerList, SpeakerDislikeList, AccountSourceList, AttributeList, GivingCapacity, DeletedReason, DeletedDate, MikeReganTY, DonorClubLevel, SpecialDonor, ProfessionalMailingList, AccountType, LegacySource, IndAnonymous, IndPotentialDupe, HashKey)
 	VALUES (did, title, name, first, middle, last, suffix, salutation, add_date, cumulative, movemgr, dateofbirth, dateofdeath, ModifiedUserId, emailaddress, frozen, spousedod, movemgr2, akey, Type, BillingStreet, city, state, zip, alt_from, alt_to, institution, phone, defaultaddr, longitude, latitude, country, vanity, Status, BookList, EventList, MailList, PersonalList, PremiumList, RecognitionList, SolicitationSchedule, CommunicationFrequency, StopMail, ProspectList, DoNotExchange, NoSolicitations, NoMail, BusinessReplyEnvolopeRequired, NoAgencyMailings, ShortLetter, NoPhoneCalls, ThankYouLetterPreference, StudentThankYou, NJCPreference, NoMassEmails, RanchPreference, InvitationPreference, CruisePreference, LegacySocietyStatus, Gifts2012, Gifts2013, Gifts2014, Gifts2015, Gifts2016, Gifts2017, Gifts2018, PhoneList, SpeakerList, SpeakerDislikeList, AccountSourceList, AttributeList, GivingCapacity, DeletedReason, DeletedDate, MikeReganTY, DonorClubLevel, SpecialDonor, ProfessionalMailingList, AccountType, LegacySource, IndAnonymous, IndPotentialDupe, HashKey);
 
-
+ END TRY
+       BEGIN CATCH
+              SELECT @err_no=ERROR_NUMBER(),
+                     @err_severity=ERROR_SEVERITY(),
+                     @err_state=ERROR_STATE(),
+                     @err_line=ERROR_LINE(),
+                     @err_message=ERROR_MESSAGE()
+ 
+             SET @newline = CHAR(10)
+ 
+              PRINT 'Error in the Account sync process'
+ 
+              RAISERROR('Error Number: %d, Severity: %d, State: %d, Line: %d, %s%s', 15, 1,
+                     @err_no, @err_severity, @err_state, @err_line, @newline, @err_message) WITH LOG
+ 
+       END CATCH
 
 
 

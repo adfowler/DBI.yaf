@@ -1,51 +1,46 @@
-SELECT *, 
-	HASHBYTES('SHA2_256',
-		ISNULL(UPPER(Salutation), '') +
-		ISNULL(UPPER(FirstName), '') +
-		ISNULL(UPPER(MiddleName), '') +
-		ISNULL(UPPER(LastName), '') +
-		ISNULL(UPPER(Suffix), '') +
-		ISNULL(UPPER(relation), '') +
-		ISNULL(UPPER(Salutation), '') +
-		ISNULL(CAST(birthday AS VARCHAR(10)), '') +
-		ISNULL(CAST(dateofdeath AS VARCHAR(10)), '') +
-		ISNULL(UPPER(IndDeceased), '') +
-		ISNULL(UPPER(EmailAddress), '') +
-		ISNULL(UPPER(cphone), '') +
-		ISNULL(UPPER(alma_mater), '') +
-		ISNULL(UPPER(EmailAddress), '') +
-		ISNULL(CAST(grad_date AS VARCHAR(10)), '') +
-		ISNULL(UPPER(BoardOfGovernrs), '') +
-		ISNULL(UPPER(RRCDocent), '') +
-		ISNULL(UPPER(BoardOfDirectors), '') +
-		ISNULL(UPPER(Parents), '') +
-		ISNULL(UPPER(Anniversary), '') +
-		ISNULL(UPPER(Veteran), '') 
-		) 'HashKey',
-	CAST(GETDATE() AS DATE) 'ArchiveDate'
-INTO Archive_SFContact
-FROM SF_Contact
+/******************************************************************************************************/
+/* DataPrep_Contact																					  */
+/* Author: Andrew Fowler - December, 2021															  */
+/*																									  */
+/* OVERVIEW																							  */
+/*  This script rolls data to the SF Contact level. It applies attribute and personal data to the     */
+/*  contact record.																					  */
+/*  Only default addresses are included.															  */
+/******************************************************************************************************/
 
-CREATE INDEX idx_Archive_SFContact ON Archive_SFContact(did)
-CREATE INDEX idx_HashKey ON Archive_SFContact(HashKey)
 
-DROP TABLE IF EXISTS SF_Contact
+DECLARE @err_no int,
+              @err_severity int,
+              @err_state int,
+              @err_line int,
+              @err_message varchar(4000),
+              @newline char(1)
+ 
+BEGIN TRY
 
---Primary
-select 	--ckey 'ReaganomicsContactID',
+USE YAF
+
+TRUNCATE TABLE upd_Contact
+
+DROP INDEX IF EXISTS upd_Contract.idx_upd_Contact_did
+DROP INDEX IF EXISTS upd_Contract.idx_upd_Contact_RCID_Hash
+
+--Primary contacts (from donors)
+INSERT INTO upd_Contact
+SELECT 	--ckey 'ReaganomicsContactID',
 		'P' + CAST(did AS VARCHAR(10))'ReaganomicsContactID',
 		did,
-		CASE WHEN b.Honorific = '' THEN a.title ELSE b.Honorific END 'Salutation',
-		CASE WHEN b.FirstName = '' THEN a.first ELSE b.FirstName END 'FirstName',
-		CASE WHEN b.MiddleName = '' THEN a.middle ELSE b.MiddleName END 'MiddleName', 
-		CASE WHEN b.LastName = '' THEN a.last ELSE b.LastName END 'LastName',
-		CASE WHEN b.Suffix = '' THEN a.suffix ELSE b.Suffix END 'Suffix',
+		title 'Salutation',
+		first 'FirstName',
+		middle 'MiddleName', 
+		last 'LastName',
+		suffix 'Suffix',
 		'Primary' 'relation',
-		a.dateofbirth 'birthday',
-		a.dateofdeath,
-		CASE WHEN a.dateofdeath IS NOT NULL OR did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'DECEASED' or description = 'DECEASED') THEN 1 ELSE 0 END 'IndDeceased',
-		ISNULL(a.emailaddress, '') 'EmailAddress',
-		ISNULL(a.phone, '') 'cphone',
+		dateofbirth 'birthday',
+		dateofdeath,
+		CASE WHEN dateofdeath IS NOT NULL OR did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'DECEASED' or description = 'DECEASED') THEN 1 ELSE 0 END 'IndDeceased',
+		ISNULL(emailaddress, '') 'EmailAddress',
+		ISNULL(phone, '') 'cphone',
 		'' 'alma_mater',
 		'' 'grad_date',
 		0 'BoardOfGovernrs',
@@ -53,100 +48,92 @@ select 	--ckey 'ReaganomicsContactID',
 		0 'BoardOfDirectors',
 		0 'Parents',
 		CAST(NULL AS DATE) 'Anniversary',
-		CAST(NULL AS VARCHAR(50)) 'Veteran'
-into SF_Contact
-from V_DonorAddress a inner join Parser_Post b --ParserPost is from NameCruncher
-  on a.did = b.DbId
-where did in (select did from SF_Account) and
-      a.defaultaddr = 1
+		CAST(NULL AS VARCHAR(50)) 'Veteran',
+		NULL 'HashKey'
+FROM V_DonorAddress 
+WHERE did in (SELECT did FROM mst_Account) and
+      defaultaddr = 1
 
-CREATE INDEX idx_SF_Contact ON SF_Contact(did)
 
---spouses
-INSERT INTO SF_Contact 
-select 	'S' + DbId 'ReaganomicsContactID',
-		DbId,
-		'' 'Salutation',
-		SpouseFirstName,
-		SpouseMiddleName,
-		a.LastName,
-		'' Suffix,
-		'Spouse' 'relation',
-		NULL 'birthday',
-		NULL 'DateOfDeath',
-		0 'IndDeceased',
-		'' 'email_address',
-		b.cphone,
-		'' 'alma_mater',
-		'' 'grad_date',
-		0 'BoardOfGovernrs',
-		0 'RRCDocent',
-		0 'BoardOfDirectors',
-		0 'Parents',
-		CAST(NULL AS DATE) 'Anniversary',
-		CAST(NULL AS VARCHAR(50)) 'Veteran'
-		FROM Parser_Post a INNER JOIN SF_Contact b
-  on a.DbId = b.did
-WHERE  SpouseFirstName <> ''
+--From contacts table
+INSERT INTO upd_Contact (ReaganomicsContactID, did, FirstName, relation, birthday, dateofdeath, IndDeceased, EmailAddress, cphone, alma_mater, grad_date, BoardOfGovernrs, RRCDocent, BoardOfDirectors,Parents)
+SELECT ckey,
+		did,
+		cname,
+		relation,
+		birthday,
+		cdod,
+		CASE WHEN cdod IS NULL THEN 0 ELSE 0 END,
+		ISNULL(email_address, ''),
+		ISNULL(cphone, ''),
+		alma_mater,
+		grad_date,
+		0,
+		0,
+		0,
+		0
+FROM Load_Contact
+
+CREATE INDEX idx_upd_Contact_did ON upd_Contact(did)
+CREATE INDEX idx_upd_Contact_RCID_Hash ON upd_Contact(ReaganomicsContactID, HashKey)
 
 /*Updates*/
+
 --dateof death
 UPDATE a
 SET a.dateofdeath = b.dated
-FROM SF_Contact a INNER JOIN Load_Attributes b
+FROM upd_Contact a INNER JOIN Load_Attributes b
   on a.did = b.did
-WHERE a.dateofdeath is null and (b.uniquekey = 'DECEASED' or b.description = 'DECEASED')
+WHERE a.dateofdeath is null AND 
+      a.ReaganomicsContactID LIKE 'P%' AND	-- primary contacts
+     (b.uniquekey = 'DECEASED' or b.description = 'DECEASED')
 
 --BoardOfGovernors
-UPDATE SF_Contact
+UPDATE upd_Contact
 SET BoardOfGovernrs = 1
 WHERE did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'BOARD OF GOVERNORS') AND
 	  ReaganomicsContactID LIKE 'P%' --Primary contact
 
 --RRCDocent
-UPDATE SF_Contact
+UPDATE upd_Contact
 SET RRCDocent = 1
 WHERE did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'RRC DOCENT') AND
 	  ReaganomicsContactID LIKE 'P%' --Primary contact
 
 --BoardOfDirectors
-UPDATE SF_Contact
+UPDATE upd_Contact
 SET BoardOfDirectors = 1
 WHERE did IN (SELECT did FROM Load_Attributes WHERE uniquekey = 'BOARD OF DIRECTORS') AND
 	  ReaganomicsContactID LIKE 'P%' --Primary contact
 
 --Parents
-UPDATE SF_Contact
+UPDATE upd_Contact
 SET Parents = 1
-WHERE did IN (SELECT did FROM Load_Attributes WHERE description LIKE '%Parents of conference%') 
+WHERE did IN (SELECT did FROM Load_Attributes WHERE description LIKE '%Parents of conference%') AND
+	  ReaganomicsContactID LIKE 'P%' --Primary contact
 
 
 --Anniversary
 UPDATE c
 SET c.Anniversary = p.description
-FROM SF_Contact c INNER JOIN Load_Personal p
+FROM upd_Contact c INNER JOIN Load_Personal p
   on c.did = p.did
-WHERE p.uniquekey = 'anniversary'
-
+WHERE p.uniquekey = 'anniversary' AND
+	  ReaganomicsContactID LIKE 'P%' --Primary contact
 
 --Veteran
 UPDATE c
 SET c.Veteran = p.description
-FROM SF_Contact c INNER JOIN Load_Personal p
+FROM upd_Contact c INNER JOIN Load_Personal p
   on c.did = p.did
-WHERE p.uniquekey = 'veteran'
-
-CREATE INDEX idx_SF_Contact_ReaganomicsContactID on SF_Contact (ReaganomicsContactID)
---CREATE INDEX idx_LoadedAccounts_ReaganomicsContactID on Staging..LoadedContacts (Reaganomics_Contact_ID__c)
+WHERE p.uniquekey = 'veteran' AND
+	  ReaganomicsContactID LIKE 'P%' --Primary contact
 
 
 --Blank last names
-ALTER TABLE SF_Contact
-ALTER COLUMN LastName varchar(100)
-
 UPDATE a
 SET a.LastName = b.institution
-FROM SF_Contact a INNER JOIN V_DonorAddress b
+FROM upd_Contact a INNER JOIN V_DonorAddress b
   on a.did = b.did
 WHERE (a.LastName = '' or a.LastName is null)
 and a.ReaganomicsContactID LIKE 'P%'
@@ -154,75 +141,97 @@ and a.ReaganomicsContactID LIKE 'P%'
 
 
 --Bad emails
-UPDATE SF_Contact
+UPDATE upd_Contact
 SET emailaddress = ''
 WHERE emailaddress not like '%@%.%' or
 	  emailaddress like '%@%@%' or
 	  EmailAddress like '%..%'or
 	  EmailAddress like '%.'
 
-
-UPDATE SF_Contact
+UPDATE upd_Contact
 SET EmailAddress = REPLACE(EmailAddress, ' ' ,'')
 
+--HashKey
+UPDATE upd_Contact
+SET HashKey =  HASHBYTES('MD5', (SELECT did, Salutation, FirstName, MiddleName, LastName, Suffix, relation, birthday, dateofdeath, IndDeceased, EmailAddress, cphone, alma_mater, grad_date, BoardOfGovernrs, RRCDocent, BoardOfDirectors, Parents, Anniversary, Veteran FROM (VALUES(null))foo(bar) FOR XML AUTO)) 
 
-UPDATE SF_Contact
-SET LastName = 'Hunter'
-WHERE did = 362345
+/*Determine updates/adds*/
+DECLARE @updates int,
+		@adds int,
+		@table char(7) = 'Contact',
+		@updatedate smalldatetime = CAST(getdate() AS DATE)
 
-ALTER TABLE SF_Contact
-ADD HashKey varbinary(8000)
+SET @updates = (SELECT COUNT(DISTINCT(u.did)) 
+			   FROM upd_Contact u INNER JOIN mst_Contact m
+				on u.ReaganomicsContactID = m.ReaganomicsContactID
+			   WHERE u.HashKey <> m.HashKey)
 
-UPDATE SF_Contact
-SET HashKey = HASHBYTES('SHA2_256',
-		ISNULL(UPPER(Salutation), '') +
-		ISNULL(UPPER(FirstName), '') +
-		ISNULL(UPPER(MiddleName), '') +
-		ISNULL(UPPER(LastName), '') +
-		ISNULL(UPPER(Suffix), '') +
-		ISNULL(UPPER(relation), '') +
-		ISNULL(UPPER(Salutation), '') +
-		ISNULL(CAST(birthday AS VARCHAR(10)), '') +
-		ISNULL(CAST(dateofdeath AS VARCHAR(10)), '') +
-		ISNULL(UPPER(IndDeceased), '') +
-		ISNULL(UPPER(EmailAddress), '') +
-		ISNULL(UPPER(cphone), '') +
-		ISNULL(UPPER(alma_mater), '') +
-		ISNULL(UPPER(EmailAddress), '') +
-		ISNULL(CAST(grad_date AS VARCHAR(10)), '') +
-		ISNULL(UPPER(BoardOfGovernrs), '') +
-		ISNULL(UPPER(RRCDocent), '') +
-		ISNULL(UPPER(BoardOfDirectors), '') +
-		ISNULL(UPPER(Parents), '') +
-		ISNULL(UPPER(Anniversary), '') +
-		ISNULL(UPPER(Veteran), '') 
-		)
-CREATE INDEX idx_HashKey ON SF_Contact(HashKey)
+SET @adds = (SELECT COUNT(DISTINCT(did))
+			 FROM upd_Contact
+			 WHERE ReaganomicsContactID not in (SELECT ReaganomicsContactID FROM mst_Contact)
+			)
 
---New/Updated records
-SELECT *
-FROM SF_Contact
-WHERE HashKey NOT IN (SELECT HashKey FROM Archive_SFContact)
+INSERT INTO UpdateLog(TableName, UpdateDate, Updates, Adds, Deletes)
+SELECT @table, @updatedate, @updates, @adds, 0
 
-select * from SF_Contact where did = 245057
-select * from Archive_SFContact where did = 245057
+/*Archive updates*/
+INSERT INTO Archive_Contact
+SELECT m.*, CAST(GETDATE() AS DATE) 'ArchiveDate'
+FROM mst_Contact m INNER JOIN upd_Contact u
+  on m.ReaganomicsContactID = u.ReaganomicsContactID
+WHERE m.HashKey <> u.HashKey
+
+/*Delete unchanged records*/
+DELETE u
+FROM upd_Contact u INNER JOIN mst_Contact m
+ on u.ReaganomicsContactID = m.ReaganomicsContactID AND
+    u.HashKey = m.HashKey
+
+/*Merge with master*/
+MERGE mst_Contact m
+USING upd_Contact u
+	ON m.ReaganomicsContactID = u.ReaganomicsContactID
+WHEN MATCHED THEN
+	UPDATE
+	SET 
+		m.did = u.did,
+		m.Salutation = u.Salutation,
+		m.FirstName = u.FirstName,
+		m.MiddleName = u.MiddleName,
+		m.LastName = u.LastName,
+		m.Suffix = u.Suffix,
+		m.relation = u.relation,
+		m.birthday = u.birthday,
+		m.dateofdeath = u.dateofdeath,
+		m.IndDeceased = u.IndDeceased,
+		m.EmailAddress = u.EmailAddress,
+		m.cphone = u.cphone,
+		m.alma_mater = u.alma_mater,
+		m.grad_date = u.grad_date,
+		m.BoardOfGovernrs = u.BoardOfGovernrs,
+		m.RRCDocent = u.RRCDocent,
+		m.BoardOfDirectors = u.BoardOfDirectors,
+		m.Parents = u.Parents,
+		m.Anniversary = u.Anniversary,
+		m.Veteran = u.Veteran,
+		m.HashKey = u.HashKey
+WHEN NOT MATCHED THEN
+	INSERT (ReaganomicsContactID, did, Salutation, FirstName, MiddleName, LastName, Suffix, relation, birthday, dateofdeath, IndDeceased, EmailAddress, cphone, alma_mater, grad_date, BoardOfGovernrs, RRCDocent, BoardOfDirectors, Parents, Anniversary, Veteran, HashKey)
+	VALUES  (ReaganomicsContactID, did, Salutation, FirstName, MiddleName, LastName, Suffix, relation, birthday, dateofdeath, IndDeceased, EmailAddress, cphone, alma_mater, grad_date, BoardOfGovernrs, RRCDocent, BoardOfDirectors, Parents, Anniversary, Veteran, HashKey);
+
+ END TRY
+       BEGIN CATCH
+              SELECT @err_no=ERROR_NUMBER(),
+                     @err_severity=ERROR_SEVERITY(),
+                     @err_state=ERROR_STATE(),
+                     @err_line=ERROR_LINE(),
+                     @err_message=ERROR_MESSAGE()
  
---See what contacts didn't make it
-SELECT *
-FROM SF_Contact
-WHERE ReaganomicsContactID NOT IN (SELECT Reaganomics_Contact_ID__c FROM LoadedContacts WHERE SystemModstamp > '2021-09-21')
-
---Everything with an email address that didn't make it in the first load failed becuase of bad formattting, set to blank
-UPDATE SF_Contact
-SET EmailAddress = ''
-WHERE ReaganomicsContactID NOT IN (SELECT Reaganomics_Contact_ID__c FROM LoadedContacts WHERE SystemModstamp > '2021-09-21')
-  AND EmailAddress <> ''
-
---Last Names not making it in. Set to anonymous?
-UPDATE SF_Contact
-SET LastName = 'Anonymous'
-WHERE ReaganomicsContactID NOT IN (SELECT Reaganomics_Contact_ID__c FROM LoadedContacts WHERE SystemModstamp > '2021-09-21')
-  AND (LastName IS NULL OR LastName = '')
-
---truncate table loadedaccounts
-
+             SET @newline = CHAR(10)
+ 
+              PRINT 'Error in the Contact sync process'
+ 
+              RAISERROR('Error Number: %d, Severity: %d, State: %d, Line: %d, %s%s', 15, 1,
+                     @err_no, @err_severity, @err_state, @err_line, @newline, @err_message) WITH LOG
+ 
+      END CATCH

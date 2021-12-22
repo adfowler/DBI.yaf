@@ -1,27 +1,31 @@
---Probably change to only archiving new data...
-INSERT INTO Archive_SFDonation
-  SELECT *,
-	     HASHBYTES('SHA2_256',
-				ISNULL(CAST(gift_date AS VARCHAR(10)), '') +
-				ISNULL(CAST(amount AS VARCHAR(15)), '') +
-				ISNULL(UPPER(don_type), '') +
-				ISNULL(UPPER(Method), '') +
-				ISNULL(UPPER(ReganomicsDonationType), '') +
-				ISNULL(UPPER(check_num), '') +
-				ISNULL(UPPER(thank_you), '') +
-				ISNULL(UPPER(Stage), '') +
-				ISNULL(UPPER(DonationName), '') +
-				ISNULL(UPPER(source), '') +
-				ISNULL(UPPER(pid), '') +
-				ISNULL(UPPER(Description), '')
-				) 'Hashkey',
-		 CAST(GETDATE() AS DATE) 'ArchiveDate'
-  FROM SF_Donation
+/******************************************************************************************************/
+/* DataPrep_Donation												  */
+/* Author: Andrew Fowler - December, 2021															  */
+/*																									  */
+/* OVERVIEW																							  */
+/*  This script rolls data to the SF Donation level. It uses data from donations and projects         */
+/******************************************************************************************************/
 
 
+DECLARE @err_no int,
+              @err_severity int,
+              @err_state int,
+              @err_line int,
+              @err_message varchar(4000),
+              @newline char(1)
 
-DROP TABLE IF EXISTS SF_Donation
+ 
+BEGIN TRY
 
+USE YAF
+
+
+TRUNCATE TABLE upd_Donation
+
+DROP INDEX IF EXISTS upd_Donation.idx_upd_donation_dkey_Hash
+DROP INDEX IF EXISTS upd_Donation.idx_upd_donation_did
+
+INSERT INTO upd_Donation
 SELECT DISTINCT 
 		dkey, 
 		d.did , 
@@ -37,160 +41,205 @@ SELECT DISTINCT
 		d.source,
 		MIN(lp.pid) 'pid',
 		CAST('' AS VARCHAR(50))	'Description',
-		CAST(0 AS BIT) 'PotentialDupe'
-INTO SF_Donation
-FROM Load_Donation d INNER JOIN SF_Account a
+		CAST(0 AS BIT) 'PotentialDupe',
+		NULL 'HashKey'
+FROM Load_Donation d INNER JOIN mst_Account a
   on d.did = a.did
-INNER JOIN Load_Projects lp	--Records get rejected if they aren't from known cACMEaigns
+INNER JOIN Load_Projects lp	--Records get rejected if they aren't from known campaigns
   on d.source = lp.source
 LEFT JOIN Lookup_DonType ld
   on d.don_type = ld.Don_Type
 GROUP BY d.dkey, d.did, gift_date, amount, ld.SF_Value, ld.Method, ld.Description, check_num, d.thank_you, d.source, a.last
 
 
-CREATE INDEX idx_SF_Donation_dkey ON SF_Donation(dkey)
-CREATE INDEX idx_SF_Donation_did ON SF_Donation(did)
+CREATE INDEX idx_upd_donation_dkey_Hash ON upd_Donation(dkey, HashKey)
+CREATE INDEX idx_upd_donation_did ON upd_Donation(did)
 
 /*Data fixes*/
 --Bad check_num
-UPDATE SF_Donation
+UPDATE upd_Donation
 SET Description = check_num,
 	check_num = ''
-WHERE (ISNUMERIC(CHECK_NUM) = 0 or LEN(check_num) > 12)
+WHERE (ISNUMERIC(CHECK_NUM) = 0 
+   or LEN(check_num) > 12)
 
 
 --Bad dates
 --1010 -> 2010
-UPDATE SF_Donation
+UPDATE upd_Donation
 SET gift_date = DATEADD(YEAR,1000,GIFT_DATE)
 WHERE YEAR(GIFT_DATE) = 1010
 
 --0200 -> 2000
-UPDATE SF_Donation
+UPDATE upd_Donation
 SET gift_date = REPLACE(gift_date, '0200', '2000')
 WHERE YEAR(gift_date) = 0200
 
 
 DROP TABLE IF EXISTS #datefix
 
+/* Fix bad dates */
 --Grabs most recent good date for records with bad gift date
 SELECT a.*, c.NewDate
 INTO #datefix
-FROM SF_Donation a CROSS APPLY (SELECT MAX(Gift_Date) 'NewDate' FROM SF_Donation b WHERE b.dkey between a.dkey - 5 and a.dkey and b.gift_date > '1950-01-01') c
+FROM upd_Donation a CROSS APPLY (SELECT MAX(Gift_Date) 'NewDate' FROM upd_Donation b WHERE b.dkey between a.dkey - 5 and a.dkey and b.gift_date > '1950-01-01') c
 WHERE a.gift_date <  '1950-01-01' 
 
 UPDATE a
 SET a.gift_date = b.NewDate
-FROM SF_Donation a INNER JOIN #datefix b
+FROM upd_Donation a INNER JOIN #datefix b
   on a.dkey = b.dkey
 
 UPDATE a
 SET DonationName = ISNULL(c.last,'') + ' - ' +  cast(a.gift_date as varchar(15))
-FROM SF_Donation a INNER JOIN #datefix b
+FROM upd_Donation a INNER JOIN #datefix b
   on a.dkey = b.dkey
-INNER JOIN SF_Account c
+INNER JOIN mst_Account c
   on a.did = c.did
 
 
-UPDATE SF_Donation
+UPDATE upd_Donation
 SET DonationName = 'Anonymous - ' +  cast(gift_date as varchar(15))
-WHERE did in (SELECT did FROM SF_Account WHERE name = 'Anonymous')
+WHERE did in (SELECT did FROM mst_Account WHERE name = 'Anonymous')
 
 /*Duplicates*/
 DROP TABLE IF EXISTS #DonationDupes
 
 SELECT DISTINCT a.dkey, a.gift_date, a.did, a.amount
 INTO #DonationDupes
-FROM Load_Donation a INNER JOIN Load_Donation b
+FROM upd_Donation a INNER JOIN upd_Donation b
   on a.did = b.did and
 	 a.gift_date = b.gift_date and
 	 a.amount = b.amount
 WHERE a.dkey <> b.dkey
 ORDER BY did
 
-select * from #DonationDupes
-order by did, gift_date, amount
-
---only loaded 1 of the dupes
-/*
-DELETE a
-FROM #DonationDupes a INNER JOIN #DonationDupes b
-  on a.amount = b.amount and
-     a.did = b.did and
-	 a.gift_date = b.gift_date
-WHERE a.dkey < b.dkey 
-*/
-drop table if exists donationdupes
-
-SELECT *
-INTO DonationDupes
-FROM #DonationDupes
 
 UPDATE a
 SET a.PotentialDupe = 1
-FROM SF_Donation a INNER JOIN DonationDupes b
+FROM upd_Donation a INNER JOIN DonationDupes b
   on a.dkey = b.dkey
 
-UPDATE SF_Donation
+UPDATE upd_Donation
 SET PotentialDupe = 0
 WHERE PotentialDupe IS NULL
 
+/*Update HashKey*/
+UPDATE upd_donation
+SET HashKey =  HASHBYTES('MD5', (SELECT did, gift_date, amount, don_type, Method, ReganomicsDonationType, check_num, thank_you, Stage, DonationName, pid, Description, PotentialDupe FROM (VALUES(null))foo(bar) FOR XML AUTO)) 
 
---2,343,163
-SELECT COUNT(*)
-FROM SF_Donation
+
+/*Determine updates/adds*/
+DECLARE @updates int,
+		@adds int,
+		@deletes int,
+		@table char(8) = 'Donation',
+		@updatedate smalldatetime = CAST(getdate() AS DATE)
+
+SET @updates = (SELECT COUNT(DISTINCT(u.dkey)) 
+			    FROM upd_donation u INNER JOIN mst_Donation m
+				 on u.dkey = m.dkey
+			    WHERE u.HashKey <> m.HashKey)
+
+
+SET @adds = (SELECT COUNT(DISTINCT(dkey))
+			 FROM upd_donation
+			 WHERE dkey not in (SELECT dkey FROM mst_Donation)
+			)
+
+SET @deletes = (SELECT COUNT(DISTINCT(dkey))
+				FROM mst_Donation
+				WHERE dkey not in (SELECT dkey FROM upd_Donation)
+			   )
+
+
+INSERT INTO UpdateLog(TableName, UpdateDate, Updates, Adds, Deletes)
+SELECT @table, @updatedate, @updates, @adds, @deletes
+
+
+/*Archive*/
+--Updates
+INSERT INTO Archive_Donation
+SELECT m.*, CAST(GETDATE() AS DATE) 'ArchiveDate'
+FROM mst_Donation m INNER JOIN upd_Donation u
+  on m.dkey = u.dkey
+WHERE m.HashKey <> u.HashKey
+
+--Deletes
+INSERT INTO Archive_Donation
+SELECT m.*, CAST(GETDATE() AS DATE) 'ArchiveDate'
+FROM mst_Donation m
+WHERE dkey not in (SELECT dkey FROM upd_Donation)
+
+/*Export for donation deletions*/
+--Running from TSQL since it's just a 1 column export of a few records.
+-- To allow advanced options to be changed.  
+EXECUTE sp_configure 'show advanced options', 1;  
+  
+-- To update the currently configured value for advanced options.  
+RECONFIGURE;  
+  
+-- To enable the feature.  
+EXECUTE sp_configure 'xp_cmdshell', 1;  
+  
+-- To update the currently configured value for this feature.  
+RECONFIGURE;  
  
- /*Export*/
- SELECT *
- FROM SF_Donation
- WHERE did % 5 <2
- ORDER BY did, dkey
+DECLARE @sql varchar(8000)
+SELECT @sql = 'bcp "SELECT ''Id'' union all SELECT ld.Id FROM yaf..mst_Donation m INNER JOIN yaf..LoadedDonations ld on m.dkey = ld.Import_ID__c WHERE dkey not in (SELECT dkey FROM yaf..upd_Donation)" queryout d:\Processes\YAF\LoadedDonations.csv -c -t, -T -S' + @@servername
+exec master..xp_cmdshell @sql
+
+/*Remove deleted donations*/
+DELETE mst_Donation 
+WHERE dkey not in (SELECT dkey FROM upd_Donation)
+
+/*Delete unchanged records*/
+DELETE u
+FROM upd_Donation u INNER JOIN mst_Donation m
+ on u.did = m.did and
+    u.HashKey = m.HashKey
 
 
- select *
- from SF_Donation
- where gift_date = '2001-08-01'
- and did = 94222
- and amount = 25.00
+/*Merge with master*/
+MERGE mst_Donation m
+USING upd_Donation u
+	ON m.dkey = u.dkey
+WHEN MATCHED THEN
+	UPDATE
+	SET m.did = u.did,
+		m.gift_date = u.gift_date,
+		m.amount = u.amount,
+		m.don_type = u.don_type,
+		m.Method = u.Method,
+		m.ReganomicsDonationType = u.ReganomicsDonationType,
+		m.check_num = u.check_num,
+		m.thank_you = u.thank_you,
+		m.Stage = u.Stage,
+		m.DonationName = u.DonationName,
+		m.source = u.source,
+		m.pid = u.pid,
+		m.Description = u.Description,
+		m.PotentialDupe = u.PotentialDupe,
+		m.HashKey = u.HashKey
 
- select count(*) from sf_donation
- select count(*) from Load_Donation
+WHEN NOT MATCHED THEN
+	INSERT (dkey, did, gift_date, amount, don_type, Method, ReganomicsDonationType, check_num, thank_you, Stage, DonationName, source, pid, Description, PotentialDupe, HashKey)
+	VALUES (dkey, did, gift_date, amount, don_type, Method, ReganomicsDonationType, check_num, thank_you, Stage, DonationName, source, pid, Description, PotentialDupe, HashKey);
 
-
- --2637
- --2270 orphans
-
- select *
- from Load_Donation a LEFT JOIN Load_Donor b
-   on a.did = b.did
- where dkey not in (select dkey from SF_Donation)	--2637
- and b.did is not null --2270 nulls (orphans)
- and source in (select source from Load_Projects)--164		367
- and b.did  in (select did from Load_AltAddr where defaultaddr = 1)
- order by a.did
-
- select *
- from load_donation a  LEFT JOIN Load_Donor b
-   on a.did = b.did
- where dkey not in (select dkey from SF_Donation)
-  and b.did is not null
-  and b.did not in (select did from Load_AltAddr where defaultaddr = 1)
-
-   select *
- from Load_Donation a LEFT JOIN Load_Donor b
-   on a.did = b.did
- where dkey not in (select dkey from SF_Donation)	--2637
- and source not in (select source from Load_Projects)--164		367
-
- select *
- from SF_Account
- where did = 103696
-
- select *
- from Load_Donor
- where did = 103696
-
- select *
- from Load_AltAddr
- where did = 103696
+ END TRY
+       BEGIN CATCH
+              SELECT @err_no=ERROR_NUMBER(),
+                     @err_severity=ERROR_SEVERITY(),
+                     @err_state=ERROR_STATE(),
+                     @err_line=ERROR_LINE(),
+                     @err_message=ERROR_MESSAGE()
+ 
+             SET @newline = CHAR(10)
+ 
+              PRINT 'Error in the Donation sync process'
+ 
+              RAISERROR('Error Number: %d, Severity: %d, State: %d, Line: %d, %s%s', 15, 1,
+                     @err_no, @err_severity, @err_state, @err_line, @newline, @err_message) WITH LOG
+ 
+       END CATCH
 

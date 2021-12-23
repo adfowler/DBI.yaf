@@ -117,7 +117,7 @@ WHEN NOT MATCHED THEN
 export
 	SELECT top 5 nid, SF_AccountId, dated, noted, Status, Priority, Id
 	FROM upd_Notes a left join Tasks_Xref b
-	on a.nid = b.Reaganomics_Note_ID__c
+	on a.nid = b.nid
 	*/
 
  END TRY

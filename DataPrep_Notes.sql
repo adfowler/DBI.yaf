@@ -43,8 +43,8 @@ USE YAF
 	-- Update SF_AccountId
 	UPDATE u
 	SET u.SF_AccountID = a.id
-	FROM upd_Notes u INNER JOIN Account_Xref a
-	  on cast(u.did as bigint) = cast(a.Reaganomics_ID__c as bigint)
+	FROM upd_Notes u INNER JOIN xref_Account a
+	  on cast(u.did as bigint) = cast(a.did as bigint)
 
 	--Remove notes without a loaded account (they'll be picked up later)
 	DELETE upd_Notes
@@ -143,7 +143,7 @@ export
 
 SELECT top 500 nid, dated,  REPLACE(REPLACE(noted,CHAR(13)+CHAR(10),' '), CHAR(10), ' ') 'noted', Status, Priority
 from SF_Notes
-where nid not in (select cast(reaganomics_note_id__c as int) from loadedtasks)
+where nid not in (select cast(reaganomics_note_id__c as int) from xref_Notes)
 */
 
 

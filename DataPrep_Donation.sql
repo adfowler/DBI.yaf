@@ -186,7 +186,7 @@ EXECUTE sp_configure 'xp_cmdshell', 1;
 RECONFIGURE;  
  
 DECLARE @sql varchar(8000)
-SELECT @sql = 'bcp "SELECT ''Id'' union all SELECT ld.Id FROM yaf..mst_Donation m INNER JOIN yaf..xref_Donation dx on m.dkey = dx.dkey WHERE dkey not in (SELECT dkey FROM yaf..upd_Donation)" queryout d:\Processes\YAF\DeletedDonations.csv -c -t, -T -S' + @@servername
+SELECT @sql = 'bcp "SELECT ''Id'' union all SELECT ld.Id FROM yaf..mst_Donation m INNER JOIN yaf..xref_Donation dx on m.dkey = dx.dkey WHERE dkey not in (SELECT dkey FROM yaf..upd_Donation)" queryout d:\Processes\YAF\SFUpdate\Data\DeletedDonations.csv -c -t, -T -S' + @@servername
 exec master..xp_cmdshell @sql
 
 /*Remove deleted donations*/

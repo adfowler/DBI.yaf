@@ -161,12 +161,12 @@ DECLARE @updates int,
 		@table char(7) = 'Contact',
 		@updatedate smalldatetime = CAST(getdate() AS DATE)
 
-SET @updates = (SELECT COUNT(DISTINCT(u.did)) 
+SET @updates = (SELECT COUNT(DISTINCT(u.ReaganomicsContactID)) 
 			   FROM upd_Contact u INNER JOIN mst_Contact m
 				on u.ReaganomicsContactID = m.ReaganomicsContactID
 			   WHERE u.HashKey <> m.HashKey)
 
-SET @adds = (SELECT COUNT(DISTINCT(did))
+SET @adds = (SELECT COUNT(DISTINCT(ReaganomicsContactID))
 			 FROM upd_Contact
 			 WHERE ReaganomicsContactID not in (SELECT ReaganomicsContactID FROM mst_Contact)
 			)

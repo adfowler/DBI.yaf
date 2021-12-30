@@ -1,5 +1,5 @@
 /******************************************************************************************************/
-/* DataPrep_Donation												  */
+/* DataPrep_Donation																				  */
 /* Author: Andrew Fowler - December, 2021															  */
 /*																									  */
 /* OVERVIEW																							  */
@@ -22,8 +22,8 @@ USE YAF
 
 TRUNCATE TABLE upd_Donation
 
-DROP INDEX IF EXISTS upd_Donation.idx_upd_donation_dkey_Hash
-DROP INDEX IF EXISTS upd_Donation.idx_upd_donation_did
+
+--ALTER INDEX ALL ON upd_Donation DISABLE
 
 INSERT INTO upd_Donation
 SELECT DISTINCT 
@@ -47,13 +47,22 @@ FROM Load_Donation d INNER JOIN mst_Account a
   on d.did = a.did
 INNER JOIN Load_Projects lp	--Records get rejected if they aren't from known campaigns
   on d.source = lp.source
-LEFT JOIN Lookup_DonType ld
+LEFT JOIN lkup_DonType ld
   on d.don_type = ld.Don_Type
 GROUP BY d.dkey, d.did, gift_date, amount, ld.SF_Value, ld.Method, ld.Description, check_num, d.thank_you, d.source, a.last
 
+--ALTER INDEX ALL ON upd_Donation REBUILD
 
-CREATE INDEX idx_upd_donation_dkey_Hash ON upd_Donation(dkey, HashKey)
-CREATE INDEX idx_upd_donation_did ON upd_Donation(did)
+
+/*Drops for records that will fail becuase of missing data in other tables. They will error when loading into Salesforce*/
+
+--campaigns we haven't loaded yet. 
+DELETE FROM upd_Donation
+WHERE pid NOT IN (SELECT pid FROM mst_Campaign)
+
+--people we haven't loaded yet.
+DELETE FROM upd_Donation
+WHERE did NOT IN (SELECT did FROM mst_Account)
 
 /*Data fixes*/
 --Bad check_num
@@ -101,6 +110,7 @@ INNER JOIN mst_Account c
 UPDATE upd_Donation
 SET DonationName = 'Anonymous - ' +  cast(gift_date as varchar(15))
 WHERE did in (SELECT did FROM mst_Account WHERE name = 'Anonymous')
+
 
 /*Duplicates*/
 DROP TABLE IF EXISTS #DonationDupes
@@ -186,8 +196,17 @@ EXECUTE sp_configure 'xp_cmdshell', 1;
 RECONFIGURE;  
  
 DECLARE @sql varchar(8000)
-SELECT @sql = 'bcp "SELECT ''Id'' union all SELECT ld.Id FROM yaf..mst_Donation m INNER JOIN yaf..xref_Donation dx on m.dkey = dx.dkey WHERE dkey not in (SELECT dkey FROM yaf..upd_Donation)" queryout d:\Processes\YAF\SFUpdate\Data\DeletedDonations.csv -c -t, -T -S' + @@servername
+SELECT @sql = 'bcp "SELECT ''Id'' union all SELECT dx.Id FROM yaf..mst_Donation m INNER JOIN yaf..xref_Donation dx on m.dkey = dx.dkey WHERE m.dkey not in (SELECT dkey FROM yaf..upd_Donation)" queryout D:\Processes\YAF\SFUpdate\Data\DeletedDonations.csv -c -t, -T -S' + @@servername
 exec master..xp_cmdshell @sql
+
+/*
+another way to find deletes
+ select *
+ from Archive_Donation 
+ where dkey not in (select dkey from yaf..upd_Donation)
+ and archivedate = cast(getdate() as date)
+
+ */
 
 /*Remove deleted donations*/
 DELETE mst_Donation 

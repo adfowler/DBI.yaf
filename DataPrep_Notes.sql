@@ -22,8 +22,7 @@ USE YAF
 
 	TRUNCATE TABLE upd_Notes
 
-	DROP INDEX IF EXISTS upd_Notes.idx_upd_Notes_did
-	DROP INDEX IF EXISTS upd_Notes.idx_upd_Notes_nid_hash
+	--ALTER INDEX ALL ON upd_Notes DISABLE
 
 	--Inserts all notes for loaded accounts where the note is under 32000 characters after html cleanup
 	INSERT INTO upd_Notes (nid, did, dated, noted, Status, Priority)
@@ -35,12 +34,12 @@ USE YAF
 		   'Normal' 'Priority'
 	FROM Load_Notes 
 	WHERE-- DATALENGTH(dbo.striphtml(noted) )< 32000 AND
-		  noted is not null
+		  noted is not null AND
+		  did IN (SELECT did FROM mst_Account) --Only for people we already have, otherwise SF will kick it out
 
-	CREATE INDEX idx_upd_Notes_did ON upd_notes(did)
-	CREATE INDEX idx_upd_Notes_nid_hash ON upd_notes(nid, HashKey)
+	--ALTER INDEX ALL ON upd_Notes REBUILD
 	
-	-- Update SF_AccountId
+	-- Update SF_AccountId. Needed for upsert
 	UPDATE u
 	SET u.SF_AccountID = a.id
 	FROM upd_Notes u INNER JOIN xref_Account a
@@ -54,6 +53,11 @@ USE YAF
 	UPDATE upd_Notes
 	SET noted = dbo.striphtml(noted)
 
+	--remove quotes test
+	UPDATE upd_Notes
+	SET noted = REPLACE(noted, '"', '''')
+	WHERE noted like '%"%'
+
 --HashKey
 UPDATE upd_Notes
 SET HashKey =  HASHBYTES('MD5', (SELECT did, dated, noted, status, Priority FROM (VALUES(null))foo(bar) FOR XML AUTO)) 
@@ -61,7 +65,7 @@ SET HashKey =  HASHBYTES('MD5', (SELECT did, dated, noted, status, Priority FROM
 /*Determine updates/adds*/
 DECLARE @updates int,
 		@adds int,
-		@table char(7) = 'Contact',
+		@table char(7) = 'Notes',
 		@updatedate smalldatetime = CAST(getdate() AS DATE)
 
 SET @updates = (SELECT COUNT(DISTINCT(u.nid)) 
@@ -113,13 +117,6 @@ WHEN NOT MATCHED THEN
 	VALUES  (nid, did, dated, noted, Status, Priority, SF_AccountID, HashKey);
 
 
-/*
-export
-	SELECT top 5 nid, SF_AccountId, dated, noted, Status, Priority, Id
-	FROM upd_Notes a left join Tasks_Xref b
-	on a.nid = b.nid
-	*/
-
  END TRY
        BEGIN CATCH
               SELECT @err_no=ERROR_NUMBER(),
@@ -136,31 +133,3 @@ export
                      @err_no, @err_severity, @err_state, @err_line, @newline, @err_message) WITH LOG
  
       END CATCH
-
-
-/*
---Export query. Removes new line characters.
-
-SELECT top 500 nid, dated,  REPLACE(REPLACE(noted,CHAR(13)+CHAR(10),' '), CHAR(10), ' ') 'noted', Status, Priority
-from SF_Notes
-where nid not in (select cast(reaganomics_note_id__c as int) from xref_Notes)
-*/
-
-
-/* QAs */
-
-/*
---QAs for notes not inserted
---not in SF_Notes
-SELECT *
-FROM Load_Notes
-WHERE nid NOT IN (SELECT nid from SF_Notes)
-ORDER BY nid, did
-
---Not loaded into SF
-SELECT *
-FROM Load_Notes
-WHERE nid not in (SELECT reaganomics_note_id__C FROM LoadedTasks WHERE CreatedDate > ='2020-12-23')
-ORDER BY nid, did
-
-*/

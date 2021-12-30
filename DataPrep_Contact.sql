@@ -20,10 +20,11 @@ BEGIN TRY
 
 USE YAF
 
+DBCC TRACEON(460)
+
 TRUNCATE TABLE upd_Contact
 
-DROP INDEX IF EXISTS upd_Contract.idx_upd_Contact_did
-DROP INDEX IF EXISTS upd_Contract.idx_upd_Contact_RCID_Hash
+--ALTER INDEX ALL ON upd_Contact DISABLE
 
 --Primary contacts (from donors)
 INSERT INTO upd_Contact
@@ -42,13 +43,13 @@ SELECT 	--ckey 'ReaganomicsContactID',
 		ISNULL(emailaddress, '') 'EmailAddress',
 		ISNULL(phone, '') 'cphone',
 		'' 'alma_mater',
-		'' 'grad_date',
+		NULL 'grad_date',
 		0 'BoardOfGovernrs',
 		0 'RRCDocent',
 		0 'BoardOfDirectors',
 		0 'Parents',
-		CAST(NULL AS DATE) 'Anniversary',
-		CAST(NULL AS VARCHAR(50)) 'Veteran',
+		NULL 'Anniversary',
+		NULL 'Veteran',
 		NULL 'HashKey'
 FROM V_DonorAddress 
 WHERE did in (SELECT did FROM mst_Account) and
@@ -74,10 +75,13 @@ SELECT ckey,
 		0
 FROM Load_Contact
 
-CREATE INDEX idx_upd_Contact_did ON upd_Contact(did)
-CREATE INDEX idx_upd_Contact_RCID_Hash ON upd_Contact(ReaganomicsContactID, HashKey)
+--ALTER INDEX ALL ON upd_Contact REBUILD
 
 /*Updates*/
+--Dates
+UPDATE upd_Contact
+SET dateofdeath = CASE WHEN dateofdeath = '1900-01-01' THEN NULL ELSE dateofdeath END,
+	birthday = CASE WHEN birthday = '1900-01-01' THEN NULL ELSE birthday END
 
 --dateof death
 UPDATE a
@@ -175,6 +179,7 @@ INSERT INTO UpdateLog(TableName, UpdateDate, Updates, Adds, Deletes)
 SELECT @table, @updatedate, @updates, @adds, 0
 
 /*Archive updates*/
+
 INSERT INTO Archive_Contact
 SELECT m.*, CAST(GETDATE() AS DATE) 'ArchiveDate'
 FROM mst_Contact m INNER JOIN upd_Contact u
@@ -218,6 +223,8 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
 	INSERT (ReaganomicsContactID, did, Salutation, FirstName, MiddleName, LastName, Suffix, relation, birthday, dateofdeath, IndDeceased, EmailAddress, cphone, alma_mater, grad_date, BoardOfGovernrs, RRCDocent, BoardOfDirectors, Parents, Anniversary, Veteran, HashKey)
 	VALUES  (ReaganomicsContactID, did, Salutation, FirstName, MiddleName, LastName, Suffix, relation, birthday, dateofdeath, IndDeceased, EmailAddress, cphone, alma_mater, grad_date, BoardOfGovernrs, RRCDocent, BoardOfDirectors, Parents, Anniversary, Veteran, HashKey);
+
+DBCC TRACEOFF(460)
 
  END TRY
        BEGIN CATCH

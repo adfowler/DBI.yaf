@@ -1,5 +1,5 @@
 /******************************************************************************************************/
-/* DataPrep_Account														  */
+/* DataPrep_Account																					  */
 /* Author: Andrew Fowler - December, 2021															  */
 /*																									  */
 /* OVERVIEW																							  */
@@ -24,10 +24,11 @@ DECLARE @err_no int,
 BEGIN TRY
 USE YAF
 
+--ALTER INDEX ALL ON upd_Account DISABLE
 
 
 TRUNCATE TABLE upd_Account
-DROP INDEX IF EXISTS upd_Account.idx_upd_Account_did_Hash
+--DROP INDEX IF EXISTS upd_Account.idx_upd_Account_did_Hash
 
 ;WITH 
 at1 AS (
@@ -320,7 +321,7 @@ LEFT OUTER JOIN attributelist n
   ON a.did = n.did
 WHERE a.defaultaddr = 1 
 
-CREATE INDEX idx_upd_Account_did_Hash ON upd_Account(did, HashKey)
+--ALTER INDEX ALL ON upd_Account REBUILD
 
 /*Update Mail Preferences*/
 --Some of these that match on longer strings can be combinied into 1 update statement. The BRE and YEARLY matches should still be kept separately since they are smaller common strings that could lead to mis mappings.
@@ -512,7 +513,7 @@ WHERE name = '' and
 	  institution =''
 	  
 --Bad emails
---Might need to expand bad email recognition for automation.
+--Might need to expand bad email recognition for automation. Bad emails will cause SF to kick out the row
 UPDATE upd_Account
 SET emailaddress = ''
 WHERE emailaddress not like '%@%.%' or
@@ -529,11 +530,21 @@ SET emailaddress = CASE emailaddress
 					WHEN 'reesae@aol..com' THEN 'reesae@aol.com'
 					ELSE emailaddress
 				  END
+
+/*Dates*/
+UPDATE upd_Account
+SET dateofbirth = CASE WHEN dateofbirth = '1900-01-01' THEN NULL ELSE dateofbirth END,
+	dateofdeath = CASE WHEN dateofdeath = '1900-01-01' THEN NULL ELSE dateofdeath END,
+	spousedod = CASE WHEN spousedod = '1900-01-01' THEN NULL ELSE spousedod END,
+	alt_from = CASE WHEN alt_from = '1900-01-01' THEN NULL ELSE alt_from END,
+	alt_to = CASE WHEN alt_to = '1900-01-01' THEN NULL ELSE alt_to END
+	
+
+
 /*Set Dupes*/
 
 DROP TABLE IF EXISTS #dupes
 
---3334
 ;with t1 as (
   SELECT first, last, LEFT(zip, 5) 'zip', BillingStreet, count(*) 'DupCount', MIN(akey) 'DupGroup'
   FROM upd_Account
@@ -701,97 +712,3 @@ WHEN NOT MATCHED THEN
                      @err_no, @err_severity, @err_state, @err_line, @newline, @err_message) WITH LOG
  
        END CATCH
-
-
-
-/*
-This was a one off pull of addresses for standardization
---Export to name parser for pulling spouse contacts
-SELECT  did, title, first, middle, last, suffix, BillingStreet, city, state, zip, institution
-FROM upd_Account
-
-/*Post Address standardization*/
-SELECT ListId, RecordNumber, ListType, Honorific, FirstName, MiddleName, LastName, Suffix, SpouseFirstName, SpouseMiddleName, CompanyName, FinalAddress1 'AddressLine1', FinalAddress2 'AddressLine2', FinalCity 'City', FinalState 'State', FinalZipcode 'ZipCode', FinalZip4 'Zip4', CarrierRoute,
-    CountyFIPS, DeliveryPoint, CMRA, ValidationFlag, DPVFootnotes, DPVIndicator, DPVVacant, StandardizationCode, LOTNumber, RecordType, MatchFlag, MoveType, MoveDate, HouseholdHash, ContactID, QualityScore, CAST('' AS CHAR(1)) 'RejectCode', ParseCode, Gender,
-    CAST(NULL AS INT) 'PriorityLevel', CAST(NULL AS VARCHAR(25)) 'DonorID', CAST(NULL AS VARCHAR(5)) 'MissionCode', CAST(NULL AS VARCHAR(3)) 'ListCode', CAST(NULL AS INTEGER) 'DbId', CAST(NULL AS INTEGER) 'SiteId', CAST(0 AS BIT) 'Keeper', CAST(NULL AS BINARY(32)) 'ContactHash', CAST(0 AS BIT) 'IndicateDMA', CAST(0 AS BIT) 'IndicateDeceased', CAST(0 AS BIT) 'IndicatePrison',  CAST('' AS VARCHAR(2)) 'HouseSegment '
-INTO #ProjectWork
-FROM YAFAccounts_Results
-
-
-
---Update DonorIds for house records
-;WITH House as (
-		--Break out original data into it's fields. You'll have to check this query to see what rows coorespond to the fields we need.
-		SELECT	ListID, 
-				RecordNumber, 
-				[value] as String, 
-				Row_Number() Over(Partition By recordnumber order by %%physloc%% ) rn
-		FROM YAFAccounts_Results 
-		 cross apply string_split(FullOriginalRecord,',')	
-		),
-	  --Pull out the fields we need
-	  DonorInfo as (
-		SELECT Listid, 
-		       RecordNumber, 
-			   CASE WHEN rn = 2 THEN REPLACE(string,'''','') ELSE '' END 'DonorID'
-			   --CASE WHEN rn = 2 THEN REPLACE(string,'''','') ELSE '' END 'MissionCode'
-		FROM House 
-		),
-	  --clean out blanks, probably not necessary since we are just updating.
-	  DonorInfoFinal as (
-		SELECT ListId, RecordNumber, MAX(DonorID) 'DonorId'
-		FROM DonorInfo
-		GROUP BY ListID, RecordNumber
-		)
-
-UPDATE a
-SET a.DonorID = b.DonorID
-FROM #ProjectWork a INNER JOIN DonorInfoFinal b
-  on a.ListID = b.ListID and
-     a.RecordNumber = b.RecordNumber
-
-UPDATE a
-SET a.BillingStreet = RTRIM(b.AddressLine1 + ' ' + b.AddressLine2)
-FROM upd_Account a INNER JOIN #ProjectWork b
-  on a.did = b.DonorID
-WHERE b.StandardizationCode < 92
-
-*/
-
-
-
-
-  /*
-
-
-
-/*Check what loaded*/
-	TRUNCATE TABLE LoadedAccounts
-	ALTER TABLE LoadedAccounts DROP CONSTRAINT pk_LoadedAccounts
-
-	--export file from jitterbit 
-	BULK INSERT LoadedAccounts
-	FROM 'D:\Processes\YAF\LoadedAccounts.csv'
-	WITH
-	(
-		FIRSTROW = 2, --Second row if header row in file
-		FIELDTERMINATOR = ',',  --CSV field delimiter
-		ROWTERMINATOR = '\n',   --Use to shift the control to next row
-		ERRORFILE = 'D:\Processes\YAF\LoadedAccounts',
-		TABLOCK
-	)
-
-	DELETE FROM LoadedAccounts
-	WHERE Reaganomics_ID__c = '""'
-
-ALTER TABLE LoadedAccounts
-ALTER COLUMN Reaganomics_ID__c VARCHAR(10) NOT NULL
-ALTER TABLE LoadedAccounts ADD CONSTRAINT pk_LoadedAccounts Primary Key (Reaganomics_ID__c)
-
-/*Export missed*/
-SELECT *
-FROM V_SFAccount_ToLoad
-
-UPDATE V_SFAccount_ToLoad
-SET emailaddress = ''
-*/

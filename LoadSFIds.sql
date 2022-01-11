@@ -17,7 +17,7 @@ BEGIN TRY
 
 USE YAF
 
---WAITFOR TIME '06:00:00';
+WAITFOR TIME '06:00:00';
 
 /*xref_Account*/
 	TRUNCATE TABLE xref_Account
@@ -51,7 +51,71 @@ USE YAF
 	ALTER TABLE xref_Account
 	ADD CONSTRAINT pk_xref_Account PRIMARY KEY (did)
 
+/*xref_Campaign*/
+	TRUNCATE TABLE xref_Campaign
 
+	/*Get table ready for insert*/
+	ALTER TABLE xref_Campaign DROP CONSTRAINT pk_xref_Campaign
+
+	ALTER TABLE xref_Campaign
+	ALTER COLUMN pid varchar(15)
+
+	/*Load file*/
+		--export file from jitterbit 
+		BULK INSERT xref_Campaign
+		FROM 'D:\Processes\YAF\SFUpdate\Data\LoadedCampaigns.csv'
+		WITH
+		(
+			FIRSTROW = 2, --Second row if header row in file
+			FIELDTERMINATOR = ',',  --CSV field delimiter
+			ROWTERMINATOR = '\n',   --Use to shift the control to next row
+			TABLOCK
+		)
+
+	/*Clean table*/
+		DELETE FROM xref_Campaign
+		WHERE pid = '""'
+
+		ALTER TABLE xref_Campaign
+		ALTER COLUMN pid int NOT NULL
+
+		ALTER TABLE xref_Campaign
+		ADD CONSTRAINT pk_xref_Campaign PRIMARY KEY (pid)
+
+
+/*xref_Contact*/
+	TRUNCATE TABLE xref_Contact
+
+	/*Get table ready for insert*/
+	ALTER TABLE xref_Contact DROP CONSTRAINT pk_xref_Contact
+
+	ALTER TABLE xref_Contact
+	ALTER COLUMN ReaganomicsContactID varchar(20)
+
+	/*Load file*/
+		--export file from jitterbit 
+		BULK INSERT xref_Contact
+		FROM 'D:\Processes\YAF\SFUpdate\Data\LoadedContacts.csv'
+		WITH
+		(
+			FIRSTROW = 2, --Second row if header row in file
+			FIELDTERMINATOR = ',',  --CSV field delimiter
+			ROWTERMINATOR = '\n',   --Use to shift the control to next row
+			TABLOCK
+		)
+
+
+
+	/*Clean table*/
+		DELETE FROM xref_contact
+		WHERE ReaganomicsContactID = '""'
+
+		ALTER TABLE xref_contact
+		ALTER COLUMN ReaganomicsContactID varchar(20) NOT NULL
+
+		ALTER TABLE xref_contact
+		ADD CONSTRAINT pk_xref_contact PRIMARY KEY (ReaganomicsContactID)
+		
 /*xref_Donation*/
 	TRUNCATE TABLE xref_Donation
 

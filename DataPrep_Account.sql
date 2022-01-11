@@ -24,7 +24,7 @@ DECLARE @err_no int,
 BEGIN TRY
 USE YAF
 
---ALTER INDEX ALL ON upd_Account DISABLE
+ALTER INDEX ALL ON upd_Account DISABLE
 
 
 TRUNCATE TABLE upd_Account
@@ -321,7 +321,7 @@ LEFT OUTER JOIN attributelist n
   ON a.did = n.did
 WHERE a.defaultaddr = 1 
 
---ALTER INDEX ALL ON upd_Account REBUILD
+ALTER INDEX ALL ON upd_Account REBUILD
 
 /*Update Mail Preferences*/
 --Some of these that match on longer strings can be combinied into 1 update statement. The BRE and YEARLY matches should still be kept separately since they are smaller common strings that could lead to mis mappings.

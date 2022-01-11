@@ -84,6 +84,10 @@ UPDATE upd_Donation
 SET gift_date = REPLACE(gift_date, '0200', '2000')
 WHERE YEAR(gift_date) = 0200
 
+--0201 -> 2021. Based on similar dkeys
+UPDATE upd_Donation
+SET gift_date = REPLACE(gift_date, '0201', '2021')
+WHERE YEAR(gift_date) = 0201
 
 DROP TABLE IF EXISTS #datefix
 
